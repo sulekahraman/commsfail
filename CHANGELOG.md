@@ -16,6 +16,11 @@ The repository is now organised for many annotators from many people.
 - `regex_v1` 0.2.0: skips the goal post and the runner's reports. Its output on shares is unchanged.
 - The source entry-point group is `commsfail.sources` (was `commsfail.loaders`). `--source` replaces `--loader`.
 - New dependency: `jsonschema`.
+- `facts_v1`: said versus did. Seven facts, each a post checked against its author's own log. On the bench run
+  `ep-001` it finds all five problems found by reading the logs by hand, and nothing else.
+- The SharedNet reader follows the real message rows: `reply_to_message_id`, `sender.kind` (runner, human),
+  `sender_principal_id`. Each `sharednet say` command is linked to the post it made (`posted`), and
+  `ops_before(trace, seq)` gives what a seat had done before a post.
 
 ## 0.1.0
 

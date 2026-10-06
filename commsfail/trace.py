@@ -3,12 +3,12 @@
     Trace
       .room      {id, name, created_at, latest_sequence, state}
       .seats     [{handle, label, driver, model, joined_at, principal, member_id}]
-      .posts     [{seq, who, text, created_at, reply_to, type, role}]
-                 who = a seat handle; role = "goal" | "agent" | "runner" | "other" | None (unknown)
+      .posts     [{seq, id, who, text, created_at, reply_to, type, role}]
+                 who = a seat handle; reply_to = a seq; role = "goal" | "agent" | "runner" | "other" | None (unknown)
       .artifacts [{id, by, created_at, name, sha256}]
-      .ops       {handle: [{turn, i, kind, command, exit_code, output, paths, query, name, text}]}
+      .ops       {handle: [{turn, i, kind, command, exit_code, output, posted, paths, query, name, text}]}
                  what each seat did, read from its own harness log; kind = command | file_change |
-                 web_search | tool | message | error
+                 web_search | tool | message | error; posted = the seq a `sharednet say` command made
       .checks    [{at, trigger, command, cause, exit_code, passed, sequence, output}]
       .wakes     [{seat, turn, fired, from, through, messages, started_at, ended_at, exit_code, failed, tokens}]
       .episode   the run's own summary: goal, ended_by, totals, agents, ...

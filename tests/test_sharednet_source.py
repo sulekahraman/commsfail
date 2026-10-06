@@ -78,3 +78,32 @@ def test_summary(goal_run):
     s = sn.summary(goal_run)
     assert s["posts"] == 12 and s["agent_posts"] == 11 and s["ended_by"] == "after 45m"
     assert s["checks"] == 1 and s["checks_passed"] == 0 and s["ops"]["codex-2"] > 0
+
+def test_real_row_shape(goal_run):
+    t = goal_run
+    assert t.posts[10]["reply_to"] == 8                      # reply_to_message_id, mapped to a sequence
+    assert [s["principal"] for s in t.seats] == ["p_fx1", "p_fx2", "p_fx3"]
+    assert t.posts[4]["id"] == "msg_fixture0005"
+
+def test_posts_are_linked_to_the_commands_that_made_them(goal_run):
+    links = sn.post_ops(goal_run)
+    assert sorted(links) == list(range(2, 13))               # every agent post; not the goal
+    assert links[5] == ("codex-1", 1, 3)
+    before = sn.ops_before(goal_run, 5)
+    assert [o["kind"] for o in before] == ["file_change", "command", "command"]
+    assert before[-1]["command"] == "python3 -m pytest -q" and before[-1]["exit_code"] == 1
+    assert sn.ops_before(goal_run, 1) is None                # the goal was not posted by a seat's command
+    assert not any("posted_id" in o for xs in goal_run.ops.values() for o in xs)
+
+def test_board_commands():
+    assert sn.is_board_command("/bin/zsh -lc './sn say \"hi\"'") and sn.is_board_command("sharednet read --last 30")
+    assert not sn.is_board_command("python3 -m pytest -q") and not sn.is_board_command("cat snippets.txt")
+
+def test_sender_kinds(tmp_path):
+    rows = [{"id": "m1", "sequence": 1, "content": "goal", "sender": {"member_id": "i_o", "kind": "instance", "name": None}},
+            {"id": "m2", "sequence": 2, "content": "check failed", "sender": {"member_id": "i_r", "kind": "runner", "name": "goal"}},
+            {"id": "m3", "sequence": 3, "content": "owner here", "sender": {"member_id": "i_h", "kind": "human", "name": "Xisen"}},
+            {"id": "m4", "sequence": 4, "content": "ok", "sender": {"member_id": "i_a", "kind": "guest", "name": "a"}, "reply_to_message_id": "m3"}]
+    p = tmp_path / "room.ndjson"; p.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    t = sn.load(str(p))
+    assert [q["role"] for q in t.posts] == ["agent", "runner", "other", "agent"] and t.posts[3]["reply_to"] == 3

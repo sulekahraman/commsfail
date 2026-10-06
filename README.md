@@ -61,16 +61,26 @@ The `Trace`:
 ```
 room       {id, name, created_at, latest_sequence, state}
 seats      [{handle, label, driver, model, joined_at, principal, member_id}]
-posts      [{seq, who, text, created_at, reply_to, type, role}]     role: goal | agent | runner | other | None
+posts      [{seq, id, who, text, created_at, reply_to, type, role}]  role: goal | agent | runner | other | None
 artifacts  [{id, by, created_at, name, sha256}]
-ops        {seat: [{turn, i, kind, command, exit_code, output, paths, query, name, text}]}
+ops        {seat: [{turn, i, kind, command, exit_code, output, posted, paths, query, name, text}]}
+           posted: the post a `sharednet say` command made, so each post is tied to its author's log
 checks     [{at, trigger, command, cause, exit_code, passed, sequence, output}]
 wakes      [{seat, turn, fired, from, through, messages, started_at, ended_at, exit_code, failed, tokens}]
 episode    the run's own summary
 source     {kind, path or redacted token, room_id, loaded_at}
 ```
 
-Tools in `commsfail.sources.sharednet` for annotators: `agent_posts`, `posts_by`, `commands`, `cites` (the `#n` a text cites), `mentions` (the `@names` it addresses), `view_at(trace, seq)` (the board as one seat could see it right after post `seq`), `summary`, `redact`, `parse_ts`.
+Tools in `commsfail.sources.sharednet` for annotators:
+
+| tool | what it gives |
+|---|---|
+| `ops_before(trace, seq)` | what the author of post `seq` had done before writing it, in order |
+| `post_ops(trace)` | for each post, the seat, turn and command that made it |
+| `view_at(trace, seq)` | the board as it was right after post `seq` |
+| `agent_posts`, `posts_by`, `commands`, `is_board_command` | posts and commands, filtered |
+| `cites`, `mentions` | the `#n` a text cites, the `@names` it addresses |
+| `summary`, `redact`, `parse_ts` | a quick look at a source; safe excerpts; timestamps |
 
 Another format is a **source plugin**: a function from a path to a `Trace`, announced by an entry point (see [examples/plugin](examples/plugin)).
 
@@ -91,7 +101,8 @@ The envelope is the same for every annotator. The `output` is the annotator's ow
 
 | annotator | output schema | what it reports |
 |---|---|---|
-| [`regex_v1`](commsfail/annotators/regex_v1) | `comms-failure/analysis.v1` | the ten failure modes below, from text patterns; the reference |
+| [`regex_v1`](commsfail/annotators/regex_v1) | `comms-failure/analysis.v1` | the ten failure modes below, from text patterns; works on any source |
+| [`facts_v1`](commsfail/annotators/facts_v1) | `commsfail/facts_v1/v1` | said versus did: each post checked against its author's own log; needs a goal-run record |
 | yours | yours | see the next section |
 
 The ten modes of `regex_v1` come from our taxonomy of communication failures. A new annotator may use them (`commsfail.annotators.taxonomy` has the helpers), refine them, or report something else entirely.
