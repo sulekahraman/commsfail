@@ -1,12 +1,47 @@
-"""A small synthetic Room that exhibits every mode once. Tests use it; so can a new annotator's author."""
+"""Shared fixtures.
+
+``synthetic_trace``  a small Room, built in Python, in which every mode of the taxonomy happens once.
+``sample``           every SharedNet source in tests/fixtures/ (a record folder, a share JSON, ...), loaded.
+``any_trace``        all of the above: the contract tests run every annotator on each one.
+"""
+import socket
+from pathlib import Path
 import pytest
+from commsfail.sources import sharednet
 from commsfail.trace import Trace
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
+SAMPLES = sorted(p for p in FIXTURES.iterdir() if p.name != "README.md" and not p.name.startswith("."))
+
+@pytest.fixture(params=[p.name for p in SAMPLES])
+def sample(request) -> Trace:
+    return sharednet.load(str(FIXTURES / request.param))
+
+@pytest.fixture(params=["synthetic"] + [p.name for p in SAMPLES])
+def any_trace(request) -> Trace:
+    return _synthetic() if request.param == "synthetic" else sharednet.load(str(FIXTURES / request.param))
+
+@pytest.fixture
+def goal_run() -> Trace:
+    return sharednet.load(str(FIXTURES / "goal_run"))
+
+@pytest.fixture
+def no_network(monkeypatch):
+    """Any attempt to open a connection fails: annotate() must run offline."""
+    def refuse(*a, **k):
+        raise RuntimeError("annotate() must not use the network")
+    monkeypatch.setattr(socket.socket, "connect", refuse)
+    monkeypatch.setattr(socket, "create_connection", refuse)
+    monkeypatch.setattr(socket, "getaddrinfo", refuse)
 
 def _post(seq, who, text, hour, reply_to=None):
     return {"seq": seq, "who": who, "text": text, "created_at": f"2026-09-20T{10 + hour // 60:02d}:{hour % 60:02d}:00Z", "reply_to": reply_to, "type": "message"}
 
 @pytest.fixture
 def synthetic_trace() -> Trace:
+    return _synthetic()
+
+def _synthetic() -> Trace:
     seats = [{"handle": "A", "label": None, "driver": "claude-code", "joined_at": "2026-09-20T10:00:00Z", "principal": "p_1"},
              {"handle": "B", "label": None, "driver": "codex", "joined_at": "2026-09-20T10:00:00Z", "principal": "p_1"},
              {"handle": "C", "label": None, "driver": "claude-code", "joined_at": "2026-09-20T10:30:00Z", "principal": "p_2"}]

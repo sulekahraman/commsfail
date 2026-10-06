@@ -1,14 +1,16 @@
 """regex_v1: the reference annotator. Transcript-only pattern matching over posts.
 
 Good at repetition and heartbeat cost. Weak wherever a judgment about silence (B1, D3, D4) or a fact from
-the record (D1, D2) is needed; on a share those are reported with low confidence or as unverifiable.
-Every evidence row is a pointer for a human to read, not a label. See CONTRIBUTING.md for the contract.
+the record (D1, D2) is needed; where the source cannot show a fact, the mode is reported with low confidence
+or as unknown. Every evidence row is a pointer for a human to read, not a label. Output: analysis.v1
+(schema.json in this folder). See README.md in this folder.
 """
 from __future__ import annotations
 import re
 from collections import Counter, defaultdict
-from .base import base_analysis, set_mode, severity_for
-from ..trace import Trace, parse_ts
+from ..taxonomy import base_analysis, set_mode, severity_for
+from ...sources.sharednet import parse_ts, redact
+from ...trace import Trace
 
 # work items: files, harness ids, artifact ids, backticked tokens. Version strings and #n refs are not items.
 ITEM_RE = re.compile(r"`([^`\n]{2,60})`|\b([\w./-]+\.(?:py|ts|tsx|js|mjs|md|json|yaml|yml|sql|sh|go|rs|java|c|h|css|html|tex|bib|tgz|zip|csv))\b|\b([WT]\d{1,3}[a-z]?)\b|\b(art_[A-Za-z0-9]{10})\b", re.I)
@@ -33,10 +35,6 @@ AUTH_RE   = re.compile(r"用户授权我|user (?:has )?authori[sz]ed me|(?:owner
 def _norm(s): return re.sub(r"[^\w一-鿿]+", " ", s.lower()).strip()
 def _shingles(s, k=4):
     w = _norm(s).split(); return {" ".join(w[i:i+k]) for i in range(max(0, len(w)-k+1))}
-def redact(s, n=160):
-    s = re.sub(r"https?://\S+", "<url>", s); s = re.sub(r"[\w.+-]+@[\w-]+\.[\w.]+", "<email>", s)
-    s = re.sub(r"\b(?:snk|sni|rit|rmt|clp|shr|afk)_[A-Za-z0-9_-]{10,}\b", "<token>", s)
-    s = re.sub(r"\s+", " ", s).strip(); return s[:n] + ("…" if len(s) > n else "")
 def items(text):
     out = set()
     for m in ITEM_RE.finditer(text):
@@ -49,13 +47,16 @@ def _bucket(seq): return "1-20" if seq <= 20 else "21-40" if seq <= 40 else "41-
 class RegexV1:
     """The reference annotator: calibrated transcript patterns. Strong on repetition and heartbeat cost; weak on silence (B1, D3, D4) and on facts the source cannot show (D1, D2)."""
     name = "regex_v1"
-    version = "0.1.0"
+    version = "0.2.0"
+    schema = "schema.json"
 
     def annotate(self, trace: Trace) -> dict:
         a = base_analysis(trace, self)
-        posts = [p for p in trace.posts if (p.get("type") or "message") == "message"]
+        # the goal and the runner's check reports are not communication between seats
+        posts = [p for p in trace.posts if (p.get("type") or "message") == "message" and p.get("role") not in ("goal", "runner")]
         n = len(posts) or 1
         has_record = trace.has_record
+        is_share = trace.source.get("kind") in ("share", "share-file")
         first_ts = parse_ts(posts[0]["created_at"]) if posts else None
         joined = {s.get("handle"): parse_ts(s.get("joined_at")) for s in trace.seats}
         uploaders = {ar.get("by") for ar in trace.artifacts}
@@ -100,7 +101,7 @@ class RegexV1:
                 if not verifiable:
                     action_unverifiable += 1
                     if has_record: ev["D1"].append(row(p, "action claimed with no matching artifact row by this seat"))
-                    elif len(ev["D1"]) < 10: ev["D1"].append(row(p, "action claimed (upload / push / tests); a share has no artifact or transfer rows to check it against"))
+                    elif len(ev["D1"]) < 10: ev["D1"].append(row(p, f"action claimed (upload / push / tests); {'a share' if is_share else 'this source'} has no artifact or transfer rows to check it against"))
             if REVIEW_RE.search(c):
                 acts["reviews"] += 1
                 for it in its: log[it]["reviews"].append({"seq": seq, "who": who})
@@ -172,7 +173,23 @@ class RegexV1:
         for mid in sev:
             set_mode(a, mid, evidence=ev.get(mid, []), severity=sev[mid], confidence=conf[mid], count=hb if mid == "HB" else len(ev.get(mid, [])))
         a["caveats"] = ["transcript-only detection; every evidence row is a pointer to read, not a label"]
-        if not has_record:
-            a["caveats"] += ["share projection: ids, artifacts and transfers stripped, so D1 cannot be verified and D2 cannot see uploads",
-                             "no per-seat execution trace: 'acted' facts of Table 1 are unavailable"]
+        if is_share:
+            a["caveats"].append("share projection: ids, artifacts and transfers stripped, so D1 cannot be verified and D2 cannot see uploads")
+        elif not has_record:
+            a["caveats"].append("no artifact rows in this source, so D1 cannot be verified against uploads")
+        if not trace.has_ops:
+            a["caveats"].append("no per-seat execution trace: 'acted' facts of Table 1 are unavailable")
         return a
+
+    def markdown(self, a: dict) -> str:
+        m = a["metrics"]
+        out = [f"# {a['room'].get('name')}: {m['posts']} posts, {m['seats']} seats" + (f", {m['span_hours']} h" if m.get("span_hours") else ""),
+               "", "| mode | severity | count | confidence | removed by |", "|---|---|---:|---:|---|"]
+        order = ["high", "medium", "low", "unknown", "none"]
+        for x in sorted(a["modes"], key=lambda x: order.index(x["severity"])):
+            out.append(f"| {x['id']} {x['name']} | {x['severity']} | {x['count']} | {x['confidence']} | {x['removed_by']} |")
+        out += ["", f"heartbeat share {m['heartbeat_share']:.0%}, asks unanswered {m['asks_unanswered']}/{m['asks']}, "
+                    f"re-claims {m['re_claims']}/{m['claims']}, open items at end {m['open_items_at_end']}, last post: {m['last_post_kind']}"]
+        return "\n".join(out)
+
+ANNOTATOR = RegexV1
