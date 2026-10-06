@@ -1,0 +1,26 @@
+name: test
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install -e ".[dev]" -e examples/plugin
+      - run: pytest
+      - name: the example plugin is wired through its entry points
+        run: |
+          commsfail annotators | grep -q '^example_v1 '
+          commsfail loaders | grep -q '^chat_jsonl '
+          commsfail analyse examples/plugin/sample_chat.jsonl --loader chat_jsonl --annotator example_v1 --markdown
+          commsfail analyse examples/plugin/sample_chat.jsonl --loader chat_jsonl -o /tmp/out.json
+          commsfail validate /tmp/out.json
