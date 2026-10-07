@@ -120,78 +120,32 @@ The ten modes of `regex_v1` come from our taxonomy of communication failures. A 
 | D4 | Capability not routed | never done: a request for an action only another seat can take, left there |
 | HB | Heartbeat cost | never done: status posts with no new information |
 
-## Contributing an annotator
+## Human labels: `commsfail audit`
 
-Different people bring different methods. All of them live side by side here, and the same tests check all of them. You do not need anyone's permission to design a new kind of annotator. You need to follow the rules below.
-
-### The rules
-
-Every annotator, built in or plugin, must obey these. `tests/test_contract.py` checks each one, on every annotator and on every sample in `tests/fixtures/`.
-
-1. **One folder, three files.** `commsfail/annotators/<name>/` holds `__init__.py` (the code, which sets `ANNOTATOR = <the class>`), `schema.json` (the output schema) and `README.md` (what it reports, how, what it is good and bad at). The folder name is the annotator's `name`.
-2. **Name and version.** `name` is lowercase letters, digits and `_`, for example `judge_gpt_v1`. Change `version` whenever the output for the same trace changes.
-3. **Your output, your schema.** `schema.json` is a JSON Schema (draft 2020-12) with `$schema`, `$id`, `title` and `description`. The `$id` names your output format, for example `commsfail/judge_gpt_v1/v1`. Change the `$id` when the format changes. Every output must validate against it.
-4. **Same trace, same output.** `annotate()` is deterministic and does not change the trace. A model judge fixes its model, temperature and seed, or caches its answers, so that a record can be made again.
-5. **No network in `annotate()`.** Loading is the source's job. A model judge gets its answers in a separate step and saves them, for example one JSON file per trace in its own folder; `annotate()` reads the saved answers. Save the answers for the samples too, so the tests can run. The tests cut the network.
-6. **Point at real posts.** Any object in your output with an integer `seq` must name a post that exists, or 0 for the whole Room.
-7. **No secrets.** Pass every excerpt of post text through `redact()`. No token may appear in the output.
-8. **Blind to the outcome.** An annotator never reads the task's grade or the experimental condition. It judges the conversation, not the result.
-9. **Say what you are not sure of.** When the source cannot show what you report, say so in the output (for example `"severity": "unknown"`) instead of a guess.
-
-### Steps
+To check an annotator, or to build training data, you need labels that people agree on. `commsfail audit` makes them in three steps:
+1. **Export** a blind file, one row per agent post, with no path, Room id, model or grade.
+2. **Compare** the labels that two people put on the rows, with Cohen's kappa per label.
+3. **Finalize** a gold file once every disagreement has been adjudicated.
 
 ```bash
-git clone https://github.com/xisen-w/commsfail && cd commsfail
-python3 -m venv .venv && . .venv/bin/activate
-pip install -e ".[dev]" -e examples/plugin
-pytest                                     # all green before you start
-
-git checkout -b annotator/<name>
-commsfail new <name>                       # makes the folder from the template, and tests/annotators/test_<name>.py
+commsfail audit export runs/ep-* --salt "$STUDY_SALT" --out blind.jsonl --key key.jsonl
+commsfail audit compare a.jsonl b.jsonl --report report.json --adjudicate todo.jsonl
+commsfail audit finalize a.jsonl b.jsonl --adjudicated todo.jsonl --key key.jsonl --out gold.jsonl
 ```
 
-Then:
+There are two built-in codebooks:
+- `modes_v1`: the ten modes above, as yes-or-no labels per post.
+- `discourse_v1`: accept, result and review_pass.
 
-1. Write your method in `commsfail/annotators/<name>/__init__.py`. Start from `commsfail.sources.sharednet` for the tools, and from `commsfail.annotators.taxonomy` if you report the ten modes.
-2. Describe your output in `schema.json`. Make it strict: `required` and `additionalProperties: false` where you can. A loose schema checks nothing.
-3. Fill in `README.md`: what it reports, how, good at, weak at, and which traces you read by hand to check it.
-4. Write behaviour tests in `tests/annotators/test_<name>.py`: which posts it points at on the samples, and why.
-5. Run `pytest`, then `commsfail analyse tests/fixtures/goal_run --annotator <name>` and read the output yourself.
-6. Open a pull request.
+Any other codebook can be a JSON file. The procedure and the rules for annotators are in [commsfail/audit](commsfail/audit).
 
-### Or keep it in your own repository
+## Contributing
 
-If your method lives next to other code, for example a training codebase, make it a plugin. Copy [examples/plugin](examples/plugin), set the entry point, and ship `schema.json` as package data:
-
-```toml
-[project.entry-points."commsfail.annotators"]
-my_v1 = "my_package.annotators:MyV1"
-```
-
-When your package and `commsfail` are installed together, `commsfail annotators` lists it and `pytest` in this repository runs the contract on it.
-
-### What a reviewer checks
-
-- The contract tests pass on all samples, on Python 3.10 to 3.13.
-- The folder has the three files, and the README is honest about weak cases.
-- The schema is strict and its `$id` is new, or the version of an existing `$id` is unchanged in meaning.
-- The behaviour tests name posts and reasons, not only "it runs".
-- No real Room content, no token and no share link in the code, the tests or the PR text.
-- The PR changes only its own folder and its own test, unless it says why.
-
-### Adding a sample
-
-The samples in `tests/fixtures/` are the shared ground for every annotator. To add one, put a record folder (or a share `.json`, or a `.ndjson`) there and describe it in [tests/fixtures/README.md](tests/fixtures/README.md). Use synthetic content, or content from a Room whose people agreed. The contract tests then run every annotator on it.
-
-### Changing shared code
-
-`sources/`, `annotators/base.py`, `annotators/taxonomy.py`, the record envelope and the CLI are shared. Open an issue first. A change to the envelope is a new `record` version.
-
-### Data rules
-
-- No real Room content in tests, examples or issues unless the people in the Room agreed.
-- Never commit a token, a key or a share link. A share link is a capability: whoever holds it can read the Room. Cite a Room by name.
-- Records of experiments stay where the experiment keeps its data. This repository holds code and synthetic samples only.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before you open a pull request. It covers:
+- the discipline every change follows: a pull request, tests in the same pull request, extending the existing tests, versions and the changelog;
+- the nine rules every annotator obeys;
+- the steps to add an annotator, a sample or a codebook;
+- the data rules.
 
 ## Repository layout
 
@@ -204,12 +158,15 @@ commsfail/
     base.py                the contract: schema loading, validation, the record envelope
     taxonomy.py            the ten modes and helpers, for annotators that use them
     regex_v1/              one annotator: __init__.py, schema.json, README.md
+    facts_v1/              said versus did, from each seat's own log
     _template/             what `commsfail new` copies
+  audit/                   human labels: blind export, kappa, adjudication, gold; the built-in codebooks
   cli.py
 tests/
   fixtures/goal_run/       a synthetic goal-run record folder
   fixtures/share.json      a synthetic share
   test_contract.py         the rules, on every annotator and every sample
+  test_audit.py            the audit steps, the export on every sample
   annotators/              one behaviour test file per annotator
 examples/plugin/           an annotator and a source in a separate package
 ```

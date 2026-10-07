@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "commsfail"
-version = "0.2.0"
+version = "0.3.0"
 description = "Communication-failure analysis of multi-agent message boards: SharedNet traces in, one record per annotator out, each annotator with its own output schema."
 readme = "README.md"
 requires-python = ">=3.10"
