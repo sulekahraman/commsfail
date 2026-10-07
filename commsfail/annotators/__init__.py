@@ -1,32 +1,53 @@
-"""The annotator registry: the built-in annotators plus any installed package that declares one.
+"""The annotator registry: every annotator folder in this package, plus installed plugins.
+
+A built-in annotator is a folder, commsfail/annotators/<name>/, with three files:
+
+    __init__.py   the code; it sets ANNOTATOR = <the class>
+    schema.json   the output schema
+    README.md     what it reports, how, and what it is good and bad at
+
+Adding the folder registers it. There is no list to edit.
+
+A plugin annotator is a class in any installed package, announced through an entry point:
 
     [project.entry-points."commsfail.annotators"]
     my_v1 = "my_package.annotators:MyV1"
 
-A class is keyed by its own ``name`` attribute; the entry-point name is only the fallback. ``REGISTRY`` is
-resolved on first access; ``discover()`` is the uncached form. To add an annotator to this package, add it
-to ``BUILTIN`` after it passes the contract tests.
+``REGISTRY`` resolves on first access; ``discover()`` is the uncached form.
 """
 from __future__ import annotations
+import importlib, pkgutil
 from functools import lru_cache
-from .base import Annotator, base_analysis, set_mode, severity_for
-from .regex_v1 import RegexV1
 from .._plugins import load_group
+from ..trace import Trace
+from .base import (RECORD, Annotator, check_annotator, make_record, schema_of, schema_path, validate_output,
+                   validate_record)
 
 ENTRY_POINT_GROUP = "commsfail.annotators"
-BUILTIN: dict[str, type] = {
-    RegexV1.name: RegexV1,
-}
+
+def builtin() -> dict[str, type]:
+    """The annotator folders in this package, by name."""
+    found = {}
+    for m in pkgutil.iter_modules(__path__):
+        if not m.ispkg or m.name.startswith("_"):
+            continue
+        cls = getattr(importlib.import_module(f"{__name__}.{m.name}"), "ANNOTATOR", None)
+        if cls is None:
+            raise ImportError(f"commsfail/annotators/{m.name}/__init__.py must set ANNOTATOR = <the class>")
+        if getattr(cls, "name", None) != m.name:
+            raise ImportError(f"commsfail/annotators/{m.name}/ holds an annotator named {getattr(cls, 'name', None)!r}; they must match")
+        found[m.name] = cls
+    return found
 
 def discover() -> dict[str, type]:
-    """Built-in annotators plus installed plugins, freshly resolved."""
-    return load_group(ENTRY_POINT_GROUP, BUILTIN, key=lambda cls, ep: getattr(cls, "name", ep.name))
+    """Built-in annotators plus installed plugins, freshly resolved. A class is keyed by its own name."""
+    return load_group(ENTRY_POINT_GROUP, builtin(), key=lambda cls, ep: getattr(cls, "name", ep.name))
 
 @lru_cache(maxsize=None)
 def registry() -> dict[str, type]:
     return discover()
 
-def get_annotator(name: str) -> Annotator:
+def get_annotator(name: str):
     reg = registry()
     try:
         return reg[name]()
@@ -34,13 +55,18 @@ def get_annotator(name: str) -> Annotator:
         raise SystemExit(f"unknown annotator '{name}'; available: {', '.join(sorted(reg))}") from None
 
 def origin(cls: type) -> str:
-    """'builtin' for annotators shipped here, otherwise the module the plugin class lives in."""
-    return "builtin" if cls.__module__.startswith("commsfail.") else cls.__module__
+    """'builtin' for an annotator folder in this package, otherwise the module the plugin class lives in."""
+    return "builtin" if cls.__module__.startswith(__name__ + ".") else cls.__module__
+
+def run(annotator, trace: Trace) -> dict:
+    """Annotate one trace and return the record: the envelope around the annotator's output."""
+    ann = get_annotator(annotator) if isinstance(annotator, str) else annotator
+    return make_record(ann, trace, ann.annotate(trace))
 
 def __getattr__(name: str):
     if name == "REGISTRY":
         return registry()
     raise AttributeError(f"module 'commsfail.annotators' has no attribute {name!r}")
 
-__all__ = ["Annotator", "base_analysis", "set_mode", "severity_for", "RegexV1", "ENTRY_POINT_GROUP", "BUILTIN",
-           "discover", "registry", "get_annotator", "origin", "REGISTRY"]
+__all__ = ["ENTRY_POINT_GROUP", "RECORD", "Annotator", "builtin", "discover", "registry", "get_annotator", "origin", "run",
+           "check_annotator", "make_record", "schema_of", "schema_path", "validate_output", "validate_record", "REGISTRY"]

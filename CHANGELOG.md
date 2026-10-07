@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.0
+
+The repository is now organised for many annotators from many people.
+
+- `commsfail/sources/sharednet.py` holds everything about SharedNet. New: the `goal run` record folder is the
+  default input (episode, room, checks, wakes, and each seat's Codex or Claude Code log as ops); a bare
+  `room.ndjson`; tools `agent_posts`, `posts_by`, `commands`, `cites`, `mentions`, `view_at`, `summary`.
+- One folder per annotator: `__init__.py`, `schema.json`, `README.md`. A folder registers itself.
+- Each annotator owns its output schema (JSON Schema 2020-12). Every output goes in one envelope,
+  `commsfail/record.v1`. `commsfail validate` checks the envelope and the output.
+- The contract tests run on every annotator, built in or plugin, and on every sample in `tests/fixtures/`:
+  conformance, determinism, no change to the trace, no network, real post numbers, no tokens.
+- `commsfail new <name>` starts an annotator from the template. `commsfail trace` shows what a source holds.
+- `regex_v1` 0.2.0: skips the goal post and the runner's reports. Its output on shares is unchanged.
+- The source entry-point group is `commsfail.sources` (was `commsfail.loaders`). `--source` replaces `--loader`.
+- New dependency: `jsonschema`.
+- `facts_v1`: said versus did. Seven facts, each a post checked against its author's own log. On the bench run
+  `ep-001` it finds all five problems found by reading the logs by hand, and nothing else.
+- The SharedNet reader follows the real message rows: `reply_to_message_id`, `sender.kind` (runner, human),
+  `sender_principal_id`. Each `sharednet say` command is linked to the post it made (`posted`), and
+  `ops_before(trace, seq)` gives what a seat had done before a post.
+
 ## 0.1.0
 
 First release.

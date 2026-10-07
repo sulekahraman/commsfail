@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "commsfail"
-version = "0.1.0"
-description = "Communication-failure analysis of multi-agent message boards: traces, annotators, the analysis.v1 record."
+version = "0.2.0"
+description = "Communication-failure analysis of multi-agent message boards: SharedNet traces in, one record per annotator out, each annotator with its own output schema."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
@@ -18,7 +18,7 @@ classifiers = [
   "Programming Language :: Python :: 3",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-dependencies = []            # the core is standard library only, on purpose
+dependencies = ["jsonschema>=4.18"]   # each annotator states its output as a JSON Schema
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
@@ -32,6 +32,9 @@ Issues = "https://github.com/xisen-w/commsfail/issues"
 
 [tool.setuptools.packages.find]
 include = ["commsfail*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.json", "*.md", "*.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

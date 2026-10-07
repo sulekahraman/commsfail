@@ -1,5 +1,5 @@
-"""Behaviour of the reference annotator on the synthetic Room: every mode fires where it should."""
-from commsfail.annotators import RegexV1
+"""Behaviour of regex_v1: every mode fires where it should on the synthetic Room, and the goal-run sample reads right."""
+from commsfail.annotators.regex_v1 import RegexV1
 
 def _mode(out, mid): return next(m for m in out["modes"] if m["id"] == mid)
 
@@ -43,3 +43,13 @@ def test_cited_ask_counts_as_answered():
     t = Trace(room={"name": "t"}, seats=[{"handle": "A"}, {"handle": "B"}], posts=posts, source={"kind": "share-file"})
     out = RegexV1().annotate(t)
     assert out["metrics"]["asks_unanswered"] == 0
+
+def test_goal_run_skips_the_goal_and_reads_the_record_kinds(goal_run):
+    out = RegexV1().annotate(goal_run)
+    assert out["metrics"]["posts"] == 11                       # the goal post is not communication between seats
+    present = {m["id"] for m in out["modes"] if m["present"]}
+    assert {"HB", "D2", "D3", "B1"} <= present
+    assert any(e["seq"] == 7 for e in _mode(out, "D2")["evidence"])      # LGTM on compile.sh, never delivered
+    assert _mode(out, "D1")["severity"] == "unknown"           # no artifact rows; regex_v1 does not read the ops
+    assert out["metrics"]["last_post_kind"] == "pause"
+    assert not any("per-seat execution trace" in c for c in out["caveats"])

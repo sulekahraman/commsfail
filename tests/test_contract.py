@@ -1,30 +1,64 @@
-"""Contract tests every registered annotator must pass. Add yours to the registry and these run on it too."""
-import json
+"""The contract. These tests run on every registered annotator, built in or plugin, and on every sample.
+
+An annotator passes when it is well formed (name, version, a valid schema with $id, title and description),
+its output conforms to its own schema on every sample, it gives the same output twice and leaves the trace
+unchanged, it runs with the network cut, every "seq" it reports is a real post, and no token reaches its output.
+"""
+import copy, json
+from pathlib import Path
 import pytest
-from commsfail import REGISTRY, validate, MODES
-from commsfail.annotators.base import Annotator
+from commsfail.annotators import check_annotator, origin, registry, run, validate_output, validate_record
+from commsfail.sources.sharednet import TOKEN_RE
 
-@pytest.mark.parametrize("name", sorted(REGISTRY))
-def test_annotator_output_conforms(name, synthetic_trace):
-    ann = REGISTRY[name]()
-    assert isinstance(ann, Annotator)
-    out = ann.annotate(synthetic_trace)
-    assert validate(out) == []
-    assert {m["id"] for m in out["modes"]} == set(MODES)
-    json.dumps(out)  # must be serializable
+NAMES = sorted(registry())
 
-@pytest.mark.parametrize("name", sorted(REGISTRY))
-def test_annotator_is_deterministic(name, synthetic_trace):
-    ann = REGISTRY[name]()
-    a, b = ann.annotate(synthetic_trace), ann.annotate(synthetic_trace)
-    a["source"].pop("fetched_at", None); b["source"].pop("fetched_at", None)
-    assert a == b
+@pytest.mark.parametrize("name", NAMES)
+def test_annotator_is_well_formed(name):
+    cls = registry()[name]
+    assert check_annotator(cls) == []
+    if origin(cls) == "builtin":
+        folder = Path(__import__(cls.__module__, fromlist=["_"]).__file__).parent
+        assert folder.name == name
+        for f in ("schema.json", "README.md"):
+            assert (folder / f).is_file(), f"commsfail/annotators/{name}/{f} is missing"
 
-@pytest.mark.parametrize("name", sorted(REGISTRY))
-def test_evidence_points_at_real_posts(name, synthetic_trace):
-    out = REGISTRY[name]().annotate(synthetic_trace)
-    seqs = {p["seq"] for p in synthetic_trace.posts} | {0}
-    for m in out["modes"]:
-        for e in m["evidence"]:
-            assert e["seq"] in seqs, f"{m['id']} evidence points at a post that does not exist: {e['seq']}"
-            assert "shr_" not in e["excerpt"] and "snk_" not in e["excerpt"], "tokens must be redacted"
+@pytest.mark.parametrize("name", NAMES)
+def test_output_conforms_to_its_own_schema(name, any_trace, no_network):
+    out = registry()[name]().annotate(any_trace)
+    assert validate_output(registry()[name], out) == []
+    json.dumps(out, allow_nan=False)
+
+@pytest.mark.parametrize("name", NAMES)
+def test_same_output_twice_and_trace_unchanged(name, any_trace, no_network):
+    before = copy.deepcopy(any_trace.to_dict())
+    ann = registry()[name]()
+    assert ann.annotate(any_trace) == ann.annotate(any_trace)
+    assert any_trace.to_dict() == before, "annotate() must not change the trace"
+
+def _seqs(x):
+    if isinstance(x, dict):
+        if isinstance(x.get("seq"), int) and not isinstance(x.get("seq"), bool):
+            yield x["seq"]
+        for v in x.values():
+            yield from _seqs(v)
+    elif isinstance(x, list):
+        for v in x:
+            yield from _seqs(v)
+
+@pytest.mark.parametrize("name", NAMES)
+def test_every_seq_is_a_real_post(name, any_trace, no_network):
+    out = registry()[name]().annotate(any_trace)
+    real = {p["seq"] for p in any_trace.posts} | {0}
+    bad = sorted(set(_seqs(out)) - real)
+    assert not bad, f"{name} points at posts that do not exist: {bad}"
+
+@pytest.mark.parametrize("name", NAMES)
+def test_no_token_in_the_output(name, any_trace, no_network):
+    text = json.dumps(registry()[name]().annotate(any_trace), ensure_ascii=False)
+    assert not TOKEN_RE.search(text), f"{name} copied a token into its output: pass excerpts through redact()"
+
+@pytest.mark.parametrize("name", NAMES)
+def test_record_round_trip(name, any_trace, no_network):
+    rec = json.loads(json.dumps(run(registry()[name](), any_trace)))
+    assert rec["annotator"]["name"] == name
+    assert validate_record(rec) == []
