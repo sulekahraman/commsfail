@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import pytest
 from commsfail import audit
-from commsfail.annotators import registry, taxonomy_of
+from commsfail.annotators import choices, load_choice, registry, taxonomy_of
 from commsfail.cli import main
 from commsfail.sources import sharednet
 from commsfail.sources.sharednet import TOKEN_RE, agent_posts
@@ -23,14 +23,17 @@ def test_built_in_codebooks_are_well_formed(name):
     assert book["id"] == name and book["version"] and len(set(ids)) == len(ids)
     assert all(x["definition"] for x in book["labels"]) and book["rules"]
 
-def test_modes_v1_is_regex_v1s_taxonomy():
-    tax = taxonomy_of(registry()["regex_v1"])
+def test_modes_v1_is_the_ten_modes_choice():
+    tax = load_choice("ten_modes")
     assert audit.CODEBOOKS["modes_v1"]["labels"] == [{k: m[k] for k in ("id", "name", "definition")} for m in tax["modes"]]
 
-@pytest.mark.parametrize("name", sorted(n for n, c in registry().items() if taxonomy_of(c)))
-def test_every_annotator_taxonomy_is_a_codebook(name, goal_run):
+@pytest.mark.parametrize("name", [*choices(), *(f"{c}:groups" for c in choices()),
+                                  *sorted(n for n, c in registry().items() if taxonomy_of(c))])
+def test_every_choice_and_every_annotator_taxonomy_is_a_codebook(name, goal_run):
     book = audit.load_codebook(name)
-    assert book["id"] == name and [x["id"] for x in book["labels"]] == [m["id"] for m in taxonomy_of(registry()[name])["modes"]]
+    choice, _, level = name.partition(":")
+    tax = load_choice(choice) if choice in choices() else taxonomy_of(registry()[name])
+    assert book["id"] == name and [x["id"] for x in book["labels"]] == [m["id"] for m in tax["groups" if level else "modes"]]
     blind, _ = audit.export([goal_run], "s", codebook=name)
     assert {r["codebook"] for r in blind} == {f"{name}@{book['version']}"}
 
@@ -40,14 +43,6 @@ def test_an_annotator_without_a_taxonomy_is_not_a_codebook():
         pytest.skip("every installed annotator has a taxonomy")
     with pytest.raises(ValueError, match="has no taxonomy"):
         audit.load_codebook(plain[0])
-
-def test_a_taxonomy_file_is_a_codebook(tmp_path):
-    f = tmp_path / "tax.json"
-    f.write_text(json.dumps(taxonomy_of(registry()["example_kickstart"])))
-    assert [x["id"] for x in audit.load_codebook(str(f))["labels"]] == ["open_question", "bare_claim"]
-    f.write_text(json.dumps({"id": "t", "version": "1", "description": "d", "modes": [{"id": "a"}]}))
-    with pytest.raises(ValueError, match="not a valid taxonomy"):
-        audit.load_codebook(str(f))
 
 def test_export_is_blind(sample):
     blind, key = audit.export([sample], "s1")
@@ -184,7 +179,7 @@ def test_cli_round_trip(tmp_path, capsys):
 def test_cli_codebooks(tmp_path, capsys):
     assert main(["audit", "codebook"]) == 0
     out = capsys.readouterr().out
-    assert all(x in out for x in ("modes_v1", "discourse_v1", "facts_v1", "example_kickstart"))
+    assert all(x in out for x in ("modes_v1", "discourse_v1", "state_gap", "decision_point", "state_gap:groups"))
     assert main(["audit", "codebook", "discourse_v1"]) == 0
     assert [x["id"] for x in json.loads(capsys.readouterr().out)["labels"]] == ["accept", "result", "review_pass"]
     mine = tmp_path / "mine.json"

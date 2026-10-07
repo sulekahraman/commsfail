@@ -49,7 +49,7 @@ class RegexV1:
     name = "regex_v1"
     version = "0.2.0"
     schema = "schema.json"
-    taxonomy = "taxonomy.json"
+    taxonomy = "ten_modes"
 
     def modes_in(self, output: dict) -> list[str]:
         return [m["id"] for m in output["modes"] if m["present"]]

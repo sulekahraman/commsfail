@@ -8,10 +8,12 @@ Three steps, each a function here and a ``commsfail audit`` command:
 
 A codebook names the labels. Each label is one yes-or-no decision about one post. A codebook is one of:
 
-    modes_v1      regex_v1's taxonomy, the ten modes: which modes a post is evidence of
-    discourse_v1  accept, result, review_pass: what a post does (Table 1 of the comms-failure paper, per post)
-    <annotator>   any annotator's taxonomy: its modes become the labels, so people label what the annotator reports
-    <file>.json   a codebook {"id", "version", "labels": [{"id", "definition"}], "rules"}, or a taxonomy file
+    modes_v1         the ten_modes taxonomy: which of the paper's ten modes a post is evidence of
+    discourse_v1     accept, result, review_pass: what a post does (Table 1 of the comms-failure paper, per post)
+    <choice>         a taxonomy choice: its patterns become the labels (state_gap, decision_point, ...)
+    <choice>:groups  the same choice, labelled by class instead of by pattern: fewer, coarser decisions
+    <annotator>      the taxonomy the annotator reports in, so people label what it reports
+    <file>.json      a codebook {"id", "version", "labels": [{"id", "definition"}], "rules"}
 
 The blind file holds what a reader needs and nothing more: the post, its author's handle, the handles it
 addresses, and the posts before it. The source path, the Room's id and name, the seats' models, the checks,
@@ -23,7 +25,7 @@ from __future__ import annotations
 import hashlib, json, random, re
 from pathlib import Path
 from typing import Iterable
-from ..annotators.taxonomy import check_taxonomy, load_taxonomy, taxonomy_of
+from ..annotators.taxonomy import choices, load_choice, taxonomy_of
 from ..sources.sharednet import TOKEN_RE, agent_posts, mentions
 from ..trace import Trace
 
@@ -39,16 +41,14 @@ RULES = [
     "`uncertain` holds the labels you cannot decide from the visible record. They are left out of kappa and always adjudicated.",
     "Write the items you mean (file names, task ids) in `note`. Change nothing but `labels`, `uncertain` and `note`.",
 ]
-REGEX_V1_TAXONOMY = Path(__file__).resolve().parents[1] / "annotators" / "regex_v1" / "taxonomy.json"
-
-def codebook_from_taxonomy(tax: dict, cid: str | None = None) -> dict:
-    """A codebook whose labels are a taxonomy's modes: people label what an annotator reports."""
+def codebook_from_taxonomy(tax: dict, cid: str | None = None, level: str = "modes") -> dict:
+    """A codebook whose labels are a taxonomy's patterns, or with level="groups", its classes."""
     return {"id": cid or tax["id"], "version": tax["version"], "description": tax["description"],
-            "labels": [{"id": m["id"], "name": m["name"], "definition": m["definition"]} for m in tax["modes"]],
+            "labels": [{"id": m["id"], "name": m["name"], "definition": m["definition"]} for m in tax[level]],
             "rules": RULES}
 
 CODEBOOKS = {
-    "modes_v1": {**codebook_from_taxonomy(load_taxonomy(str(REGEX_V1_TAXONOMY)), "modes_v1"), "version": "1",
+    "modes_v1": {**codebook_from_taxonomy(load_choice("ten_modes"), "modes_v1"), "version": "1",
                  "description": "Which of regex_v1's ten failure modes this post is evidence of. Label the post where the failure shows."},
     "discourse_v1": {
         "id": "discourse_v1", "version": "1",
@@ -84,9 +84,13 @@ def digest(row: dict) -> str:
     return "sha256:" + _sha(_canon({f: row.get(f) for f in FIXED}))
 
 def load_codebook(name_or_path: str) -> dict:
-    """A built-in codebook, an annotator's taxonomy, or a codebook or taxonomy JSON file."""
+    """A built-in codebook, a taxonomy choice (by pattern or, with ':groups', by class), an annotator's
+    taxonomy, or a codebook JSON file."""
     if name_or_path in CODEBOOKS:
         return CODEBOOKS[name_or_path]
+    choice, _, level = name_or_path.partition(":")
+    if choice in choices() and level in ("", "groups"):
+        return codebook_from_taxonomy(load_choice(choice), name_or_path, "groups" if level else "modes")
     from ..annotators import registry
     if name_or_path in registry():
         tax = taxonomy_of(registry()[name_or_path])
@@ -95,13 +99,9 @@ def load_codebook(name_or_path: str) -> dict:
         return codebook_from_taxonomy(tax, name_or_path)
     p = Path(name_or_path)
     if not p.is_file():
-        raise ValueError(f"no codebook {name_or_path!r}: use {sorted(CODEBOOKS)}, an annotator with a taxonomy, or a JSON file")
+        raise ValueError(f"no codebook {name_or_path!r}: use {sorted(CODEBOOKS)}, a taxonomy choice {choices()}, "
+                         "an annotator with a taxonomy, or a JSON file")
     book = json.loads(p.read_text(encoding="utf-8"))
-    if isinstance(book, dict) and "modes" in book:
-        problems = check_taxonomy(book)
-        if problems:
-            raise ValueError(f"{p}: not a valid taxonomy: {problems[0]}")
-        book = codebook_from_taxonomy(book)
     ids = [x.get("id") for x in book.get("labels") or [] if isinstance(x, dict)]
     if not (isinstance(book.get("id"), str) and book.get("version") and ids and all(isinstance(i, str) for i in ids)
             and len(set(ids)) == len(ids) == len(book["labels"])):

@@ -1,91 +1,140 @@
-"""Taxonomies: each annotator owns one, in ``taxonomy.json`` next to its code.
+"""Taxonomies: one catalog of failure patterns, and several ways to group them. Annotators pick one.
 
-There is no global taxonomy. Different methods cut failures differently, and each annotator states its own
-cut as data:
+Everything lives in ``taxonomy-choices/`` next to this file, and nothing is defined twice:
 
-    {"id": "...", "version": "1", "description": "...",
-     "groups": [{"id", "name", "definition"}],                      optional
-     "modes":  [{"id", "name", "definition",
-                 "group": "<a group id>",                           optional
-                 "maps_to": ["<annotator>:<mode id>", ...],         optional: the same failure in another taxonomy
-                 ...}]}                                             any other field is the annotator's own
+    patterns.json        every failure pattern, once: id, name, kind, a definition a person can label with,
+                         an example, its MAST counterparts
+    <choice>.json        one way to group the patterns: its classes ("groups"), which class each pattern is
+                         in ("modes"), and, for a complete choice, which patterns it leaves out and why
 
-``maps_to`` is what keeps different taxonomies comparable: regex_v1's ten modes are the shared reference
-that most taxonomies here map onto. The contract tests check that every ``maps_to`` names a real mode.
+An annotator names a choice, ``taxonomy = "state_gap"``, and reports pattern ids. Because every choice
+groups the same patterns, one set of labels reads under any choice: ``regroup`` moves counts across.
 
-An annotator with a taxonomy also implements ``modes_in(output)``: the mode ids an output reports. The
-contract tests check that they are all in its taxonomy.
+A choice marked ``complete`` must place every pattern of the catalog, in a class or in ``out_of_scope``.
+That is how "is the taxonomy complete?" becomes a test: a new pattern has to be placed in every complete
+choice before the tests pass.
 
 The second half of this module helps annotators whose output is ``comms-failure/analysis.v1`` (regex_v1's
 format): the output lists every mode of the annotator's taxonomy, present or not.
 """
 from __future__ import annotations
-import inspect, json
+import json
 from functools import lru_cache
 from pathlib import Path
 from ..trace import Trace
 
-def taxonomy_path(annotator) -> Path | None:
-    """Where the annotator's taxonomy file would be, or None when it is given inline as a dict."""
-    cls = annotator if isinstance(annotator, type) else type(annotator)
-    t = getattr(cls, "taxonomy", "taxonomy.json")
-    return None if isinstance(t, dict) else Path(inspect.getfile(cls)).resolve().parent / t
+CHOICES_DIR = Path(__file__).resolve().parent / "taxonomy-choices"
+KINDS = ("missing", "wrong", "timing", "excess")
+
+def _read(name: str) -> dict:
+    return json.loads((CHOICES_DIR / f"{name}.json").read_text(encoding="utf-8"))
 
 @lru_cache(maxsize=None)
-def load_taxonomy(path: str) -> dict:
-    return json.loads(Path(path).read_text(encoding="utf-8"))
+def catalog() -> dict:
+    """patterns.json: every pattern, once."""
+    return _read("patterns")
+
+def patterns() -> dict[str, dict]:
+    return {p["id"]: p for p in catalog()["patterns"]}
+
+def choices() -> list[str]:
+    """The names of the taxonomy choices."""
+    return sorted(p.stem for p in CHOICES_DIR.glob("*.json") if p.stem != "patterns")
+
+@lru_cache(maxsize=None)
+def load_choice(name: str) -> dict:
+    """A choice, resolved: its groups, and each of its modes as the catalog defines it, with its group."""
+    if name not in choices():
+        raise KeyError(f"no taxonomy choice {name!r}; the choices are {choices()}")
+    raw, pats = _read(name), patterns()
+    modes = []
+    for pid, place in raw["modes"].items():
+        extra = {"group": place} if isinstance(place, str) else dict(place)
+        modes.append({**pats[pid], **extra})
+    return {"id": raw["id"], "version": raw["version"], "description": raw["description"],
+            "complete": raw.get("complete", False), "groups": raw["groups"], "modes": modes,
+            "out_of_scope": [{"id": k, "reason": v} for k, v in raw.get("out_of_scope", {}).items()]}
 
 def taxonomy_of(annotator) -> dict | None:
-    """The annotator's taxonomy, or None when it has none."""
+    """The annotator's taxonomy, resolved, or None. ``taxonomy`` is a choice name, or a resolved dict."""
     cls = annotator if isinstance(annotator, type) else type(annotator)
-    t = getattr(cls, "taxonomy", "taxonomy.json")
-    if isinstance(t, dict):
-        return t
-    p = taxonomy_path(cls)
-    return load_taxonomy(str(p)) if p.is_file() else None
+    t = getattr(cls, "taxonomy", None)
+    return t if isinstance(t, dict) or t is None else load_choice(t)
 
 def mode_ids(taxonomy: dict) -> list[str]:
     return [m["id"] for m in taxonomy["modes"]]
 
-def check_taxonomy(tax, registry: dict | None = None) -> list[str]:
-    """Problems with a taxonomy. With a registry, also check that every maps_to names a real mode."""
-    if not isinstance(tax, dict):
-        return ["a taxonomy must be a JSON object"]
-    errs = [f"the taxonomy needs a non-empty string '{k}'" for k in ("id", "version", "description")
-            if not isinstance(tax.get(k), str) or not tax[k]]
-    groups = tax.get("groups", [])
-    if not isinstance(groups, list) or not all(isinstance(g, dict) for g in groups):
-        return errs + ["'groups' must be a list of objects"]
-    gids = [g.get("id") for g in groups]
-    for g in groups:
+def group_of(taxonomy: dict) -> dict[str, str]:
+    """pattern id -> the group it is in, under this taxonomy."""
+    return {m["id"]: m.get("group") for m in taxonomy["modes"]}
+
+def regroup(counts: dict[str, int], choice: str) -> dict[str, int]:
+    """Pattern counts, summed by the classes of another choice. Patterns it leaves out are summed under None."""
+    groups, out = group_of(load_choice(choice)), {}
+    for pid, n in counts.items():
+        g = groups.get(pid)
+        out[g] = out.get(g, 0) + n
+    return out
+
+def check_catalog(cat: dict) -> list[str]:
+    errs, seen = [], set()
+    for p in cat.get("patterns", []):
+        pid = p.get("id")
+        errs += [f"pattern {pid!r} needs a non-empty string '{k}'" for k in ("id", "name", "definition", "example")
+                 if not isinstance(p.get(k), str) or not p[k]]
+        if p.get("kind") not in KINDS:
+            errs.append(f"pattern {pid!r}: 'kind' must be one of {KINDS}")
+        if pid in seen:
+            errs.append(f"pattern {pid!r} is defined twice")
+        seen.add(pid)
+    return errs or ([] if seen else ["the catalog has no patterns"])
+
+def check_choice(raw: dict, pats: dict | None = None) -> list[str]:
+    """Problems with a raw choice file: unknown patterns or groups, and, for a complete choice, any pattern of
+    the catalog it does not place."""
+    pats = patterns() if pats is None else pats
+    errs = [f"the choice needs a non-empty string '{k}'" for k in ("id", "version", "description")
+            if not isinstance(raw.get(k), str) or not raw[k]]
+    gids = [g.get("id") for g in raw.get("groups", [])]
+    for g in raw.get("groups", []):
         errs += [f"group {g.get('id')!r} needs a non-empty string '{k}'" for k in ("id", "name", "definition")
                  if not isinstance(g.get(k), str) or not g[k]]
     if len(set(gids)) != len(gids):
         errs.append("group ids must be unique")
+    modes, out = raw.get("modes", {}), raw.get("out_of_scope", {})
+    if not modes:
+        errs.append("'modes' must place at least one pattern")
+    for pid, place in modes.items():
+        if pid not in pats:
+            errs.append(f"{pid!r} is not a pattern of the catalog; define it in patterns.json first")
+        g = place if isinstance(place, str) else (place or {}).get("group")
+        if g not in gids:
+            errs.append(f"{pid!r} is placed in group {g!r}, which 'groups' does not define")
+    errs += [f"{pid!r} is out of scope but not a pattern of the catalog" for pid in out if pid not in pats]
+    errs += [f"{pid!r} is both placed and out of scope" for pid in set(modes) & set(out)]
+    if raw.get("complete"):
+        missing = sorted(set(pats) - set(modes) - set(out))
+        if missing:
+            errs.append(f"a complete choice must place every pattern; not placed: {missing}")
+    return errs
+
+def check_taxonomy(tax) -> list[str]:
+    """Problems with a resolved taxonomy, such as one given inline by a plugin."""
+    if not isinstance(tax, dict):
+        return ["a taxonomy must be a JSON object"]
+    errs = [f"the taxonomy needs a non-empty string '{k}'" for k in ("id", "version") if not isinstance(tax.get(k), str) or not tax[k]]
     modes = tax.get("modes")
     if not isinstance(modes, list) or not modes or not all(isinstance(m, dict) for m in modes):
         return errs + ["'modes' must be a non-empty list of objects"]
     ids = [m.get("id") for m in modes]
     if len(set(ids)) != len(ids):
         errs.append("mode ids must be unique")
+    gids = {g.get("id") for g in tax.get("groups", [])}
     for m in modes:
-        mid = m.get("id")
-        errs += [f"mode {mid!r} needs a non-empty string '{k}'" for k in ("id", "name", "definition")
+        errs += [f"mode {m.get('id')!r} needs a non-empty string '{k}'" for k in ("id", "name", "definition")
                  if not isinstance(m.get(k), str) or not m[k]]
-        if "group" in m and m["group"] not in gids:
-            errs.append(f"mode {mid!r} is in group {m['group']!r}, which 'groups' does not define")
-        targets = m.get("maps_to", [])
-        if not isinstance(targets, list) or not all(isinstance(t, str) and t.count(":") == 1 for t in targets):
-            errs.append(f"mode {mid!r}: 'maps_to' must be a list of '<annotator>:<mode id>'")
-            continue
-        if registry is not None:
-            for t in targets:
-                name, target = t.split(":")
-                other = taxonomy_of(registry[name]) if name in registry else None
-                if other is None:
-                    errs.append(f"mode {mid!r} maps to {t}, but no installed annotator {name!r} has a taxonomy")
-                elif target not in mode_ids(other):
-                    errs.append(f"mode {mid!r} maps to {t}, but {name}'s taxonomy has no mode {target!r}")
+        if m.get("group") is not None and m["group"] not in gids:
+            errs.append(f"mode {m.get('id')!r} is in group {m['group']!r}, which 'groups' does not define")
     return errs
 
 # ---- helpers for annotators whose output is analysis.v1

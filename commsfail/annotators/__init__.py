@@ -1,12 +1,13 @@
 """The annotator registry: every annotator folder in this package, plus installed plugins.
 
-A built-in annotator is a folder, commsfail/annotators/<name>/, with three files, and a fourth when it reports
-failure modes:
+A built-in annotator is a folder, commsfail/annotators/<name>/, with three files:
 
-    __init__.py     the code; it sets ANNOTATOR = <the class>
-    schema.json     the output schema
-    README.md       what it reports, how, and what it is good and bad at
-    taxonomy.json   its own failure modes (see taxonomy.py); every annotator may cut failures its own way
+    __init__.py   the code; it sets ANNOTATOR = <the class>, and taxonomy = "<a choice>" if it reports failures
+    schema.json   the output schema
+    README.md     what it reports, how, and what it is good and bad at
+
+Taxonomies are not kept per annotator: taxonomy-choices/ holds one catalog of patterns and the ways to group
+them, and an annotator names the choice it reports in (see taxonomy.py).
 
 Adding the folder registers it. There is no list to edit. ``example_kickstart`` is the one to copy:
 ``commsfail new <name>`` does that.
@@ -25,7 +26,7 @@ from .._plugins import load_group
 from ..trace import Trace
 from .base import (RECORD, Annotator, check_annotator, make_record, schema_of, schema_path, validate_output,
                    validate_record)
-from .taxonomy import check_taxonomy, taxonomy_of
+from .taxonomy import check_choice, check_taxonomy, choices, load_choice, taxonomy_of
 
 ENTRY_POINT_GROUP = "commsfail.annotators"
 
@@ -74,4 +75,4 @@ def __getattr__(name: str):
 
 __all__ = ["ENTRY_POINT_GROUP", "RECORD", "Annotator", "builtin", "discover", "registry", "get_annotator", "origin", "run",
            "check_annotator", "make_record", "schema_of", "schema_path", "validate_output", "validate_record",
-           "taxonomy_of", "check_taxonomy", "REGISTRY"]
+           "taxonomy_of", "check_taxonomy", "check_choice", "choices", "load_choice", "REGISTRY"]

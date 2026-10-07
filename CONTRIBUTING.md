@@ -3,7 +3,7 @@
 Most contributions are one of three kinds:
 - **An annotator.** This is the most common kind: a new method, in its own folder.
 - **A sample.** A new board in `tests/fixtures/`, which every annotator then runs on.
-- **Shared code.** Sources, the contract, `audit`, the CLI.
+- **Shared code.** Sources, the contract, the taxonomy catalog and choices, `audit`, the CLI.
 
 All three follow the same discipline. Read it once before your first pull request.
 
@@ -25,7 +25,7 @@ These hold for every change, by anyone, including maintainers.
 7. **Versions say what changed.**
    - Change an annotator's `version` whenever its output for the same trace changes. Change its schema's `$id` when the output format changes.
    - Every pull request that changes behaviour adds a line under `## Unreleased` in [CHANGELOG.md](CHANGELOG.md).
-8. **Shared code changes start with an issue.** The shared code is `trace.py`, `sources/`, `annotators/base.py`, `annotators/taxonomy.py`, `audit/`, `cli.py` and the record envelope. A taxonomy is not shared code: it belongs to its annotator.
+8. **Shared code changes start with an issue.** The shared code is `trace.py`, `sources/`, `annotators/base.py`, `annotators/taxonomy.py`, `annotators/taxonomy-choices/`, `audit/`, `cli.py` and the record envelope.
    - A change to the envelope is a new `record` version.
    - A change to the audit rows is a new `audit-*` schema version.
 9. **The core stays small.** It has one runtime dependency, `jsonschema`. A new runtime dependency needs a reason in the pull request. Heavy ones, such as a model SDK or numpy, go in an optional extra or in a plugin.
@@ -43,11 +43,10 @@ Different people bring different methods. All of them live side by side here, an
 
 Every annotator, built in or plugin, must obey these rules. `tests/test_contract.py` checks each one, on every annotator and every sample in `tests/fixtures/`.
 
-1. **One folder, three files, four with a taxonomy.** `commsfail/annotators/<name>/` holds:
+1. **One folder, three files.** `commsfail/annotators/<name>/` holds:
    - `__init__.py`: the code, which sets `ANNOTATOR = <the class>`.
    - `schema.json`: the output schema.
    - `README.md`: what the annotator reports, how, and what it is good and bad at.
-   - `taxonomy.json`, when it reports failure modes (rule 10).
 
    The folder name is the annotator's `name`.
 2. **Name and version.** `name` is lowercase letters, digits and `_`, for example `judge_gpt_v1`. Change `version` whenever the output for the same trace changes.
@@ -62,11 +61,10 @@ Every annotator, built in or plugin, must obey these rules. `tests/test_contract
 7. **No secrets.** Pass every excerpt of post text through `redact()`. No token may appear in the output.
 8. **Blind to the outcome.** An annotator never reads the task's grade or the experimental condition. It judges the conversation, not the result.
 9. **Say what you are not sure of.** When the source cannot show what you report, say so in the output instead of guessing, for example `"severity": "unknown"`.
-10. **Your taxonomy, as data.** If the annotator reports failure modes, they live in its `taxonomy.json`, not in its code.
-    - Each mode has an id, a name and a definition that a person could label with. A mode may also have a group.
-    - In `maps_to`, name the modes of other annotators that a mode corresponds to, usually regex_v1's. A mode with no counterpart has no `maps_to`, and that is information too.
-    - Implement `modes_in(output)`, which returns the mode ids an output reports. The contract checks that they are all in your taxonomy, and that every `maps_to` names a real mode.
-    - Change the taxonomy's `version` when a definition changes, because labels made under the old wording no longer compare with the new.
+10. **Pick a taxonomy; do not write one.** If the annotator reports failures, set `taxonomy` to a choice in `commsfail/annotators/taxonomy-choices/`, and report pattern ids from `patterns.json`.
+    - Implement `modes_in(output)`, which returns the pattern ids an output reports. The contract checks that they are all in your taxonomy.
+    - If your method finds a failure that no pattern describes, add the pattern to `patterns.json`, and place it in every complete choice, in a class or out of scope with a reason. Do this in a pull request of its own, because it changes every complete taxonomy.
+    - Never copy a pattern's definition into your annotator. Read it from the catalog.
 
 ### Steps
 
@@ -83,7 +81,7 @@ pytest                                     # the copy passes as it is
 
 Then:
 
-1. Write your taxonomy in `taxonomy.json`: your modes, their definitions, and `maps_to`. Then write your method in `__init__.py`. Get the tools from `commsfail.sources.sharednet`. If your output is analysis.v1, use the helpers in `commsfail.annotators.taxonomy`.
+1. Pick a taxonomy choice, and write your method in `__init__.py`: which signals it finds, and which catalog pattern each is evidence for. Get the tools from `commsfail.sources.sharednet`. If your output is analysis.v1, use the helpers in `commsfail.annotators.taxonomy`.
 2. Describe your output in `schema.json`. Make it strict: use `required` and `additionalProperties: false` where you can. A loose schema checks nothing.
 3. Fill in `README.md`: what it reports, how, what it is good at, what it is weak at, and which traces you read by hand to check it.
 4. Write behaviour tests in `tests/annotators/test_<name>.py`: which posts it points at on the samples, and why.
@@ -104,8 +102,8 @@ When your package and `commsfail` are installed together, `commsfail annotators`
 ### What a reviewer checks
 
 - The contract tests pass on all samples, on Python 3.10 to 3.13.
-- The folder has its three files, or four with a taxonomy, and the README is honest about the weak cases.
-- Each mode's definition is one a person could label with, and `maps_to` names only true counterparts.
+- The folder has its three files, and the README is honest about the weak cases.
+- Each signal is mapped to the catalog pattern it is really evidence for. A new pattern has a definition a person could label with, and is placed in every complete choice.
 - The schema is strict. Its `$id` is either new, or an existing `$id` whose meaning has not changed.
 - The behaviour tests name posts and reasons, not only "it runs".
 - No real Room content, no token and no share link appears in the code, the tests or the pull request text.

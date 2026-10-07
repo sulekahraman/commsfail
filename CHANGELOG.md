@@ -4,23 +4,29 @@
 
 ## 0.4.0
 
-Each annotator owns its taxonomy. Communication failures can be cut in more than one way, so there is no
-global taxonomy any more.
+Taxonomies become choices. There is one catalog of failure patterns, each defined once, and several ways to
+group it. Annotators pick one.
 
-- `taxonomy.json` in an annotator's folder: groups, modes with definitions, and `maps_to`, which names the
-  modes of other annotators a mode corresponds to. `commsfail.annotators.taxonomy` loads and checks these files.
-  `commsfail taxonomy <annotator>` prints one. `commsfail annotators` shows each annotator's taxonomy.
-- The contract: every `maps_to` names a real mode, and an annotator with a taxonomy implements
-  `modes_in(output)` and reports only modes of its own taxonomy.
-- `regex_v1`: the ten modes move to `regex_v1/taxonomy.json`, with their groups, the layer that removes each,
-  and their MAST counterparts. Output unchanged.
-- `facts_v1`: its seven facts become its taxonomy, each mapped onto regex_v1's R1, D1 or D2. Output unchanged.
-- `example_kickstart`: a working annotator with a two-mode sample taxonomy, the one to copy. `commsfail new`
-  copies it and its test; the copy passes at once. It replaces `_template/`.
-- `commsfail audit`: any annotator's taxonomy, or a taxonomy file, is a codebook. `modes_v1` is now built from
-  regex_v1's taxonomy, with the same labels and definitions, so `modes_v1@1` rows still compare.
-- Breaking: `commsfail.annotators.taxonomy.MODES` is gone; read `taxonomy_of(<annotator>)` instead.
-  `base_analysis()` lists the modes of the annotator's own taxonomy.
+- `commsfail/annotators/taxonomy-choices/`:
+  - `patterns.json`: 43 patterns, each with a kind (missing, wrong, timing, excess), a definition, an example
+    and its MAST counterparts. The paper's ten modes keep their ids and definitions.
+  - `ten_modes`: the paper's three groups. The reference; it is partial on purpose.
+  - `state_gap` (proposal A): classes by which two states of the run disagree.
+  - `decision_point` (proposal B): classes by which decision an agent got wrong.
+- A choice marked `complete` must place every pattern of the catalog, in a class or out of scope with a reason.
+  The tests check this, so adding a pattern means saying where it goes in every complete taxonomy.
+- An annotator sets `taxonomy = "<choice>"` and implements `modes_in(output)`. The contract checks that a
+  built-in annotator names a choice, keeps no taxonomy of its own, and reports only patterns of its choice.
+  `regroup()` reads pattern counts in any choice.
+- `regex_v1` and `facts_v1` read in `ten_modes`. Output is byte-identical to 0.3.0.
+- `example_kickstart`: a working annotator, read in `state_gap`, that shows signals → patterns → classes.
+  It is the one to copy: `commsfail new` copies it and its test, and the copy passes at once. It replaces
+  `_template/`.
+- `commsfail taxonomy` lists the choices; `commsfail taxonomy <choice | annotator>` prints one, resolved.
+- `commsfail audit`: any choice is a codebook, by pattern (`state_gap`) or by class (`state_gap:groups`), and so
+  is any annotator's taxonomy. `modes_v1` is built from `ten_modes`, with the same labels and definitions.
+- Breaking: `commsfail.annotators.taxonomy.MODES` is gone; use `load_choice("ten_modes")` or
+  `taxonomy_of(<annotator>)`. `_template/` is gone.
 
 ## 0.3.0
 

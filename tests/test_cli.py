@@ -12,7 +12,7 @@ def test_lists(capsys):
     assert main(["annotators"]) == 0
     out = capsys.readouterr().out
     assert "regex_v1" in out and "builtin" in out and "comms-failure/analysis.v1" in out
-    assert "comms-failure/ten-modes@1" in out and "example_kickstart@1" in out
+    assert "ten_modes@1" in out and "state_gap@1" in out
     assert main(["sources"]) == 0 and "sharednet" in capsys.readouterr().out
 
 def test_analyse_validate_and_markdown(tmp_path, capsys):
@@ -34,8 +34,14 @@ def test_trace_and_schema(capsys):
     assert json.loads(capsys.readouterr().out)["posts"] == 12
     assert main(["schema", "regex_v1"]) == 0
     assert json.loads(capsys.readouterr().out)["$id"] == "comms-failure/analysis.v1"
+    assert main(["taxonomy"]) == 0
+    listing = capsys.readouterr().out
+    assert all(c in listing for c in ("ten_modes", "state_gap", "decision_point")) and "complete" in listing
     assert main(["taxonomy", "regex_v1"]) == 0
     assert len(json.loads(capsys.readouterr().out)["modes"]) == 10
+    assert main(["taxonomy", "state_gap"]) == 0
+    assert [g["id"] for g in json.loads(capsys.readouterr().out)["groups"]][:6] == \
+        ["unsaid", "unreceived", "misread", "disagreement", "ungrounded", "stalled"]
     plain = [n for n, c in registry().items() if taxonomy_of(c) is None]
     if plain:
         assert main(["taxonomy", plain[0]]) == 1 and "has no taxonomy" in capsys.readouterr().err
@@ -44,7 +50,7 @@ def test_new_makes_a_working_copy_of_example_kickstart(tmp_path, capsys, monkeyp
     (tmp_path / "commsfail" / "annotators").mkdir(parents=True)
     assert main(["new", "my_method_v1", "--root", str(tmp_path)]) == 0
     folder = tmp_path / "commsfail" / "annotators" / "my_method_v1"
-    assert sorted(p.name for p in folder.iterdir()) == ["README.md", "__init__.py", "schema.json", "taxonomy.json"]
+    assert sorted(p.name for p in folder.iterdir()) == ["README.md", "__init__.py", "schema.json"]
     assert "kickstart" not in (folder / "README.md").read_text().lower()      # the how-to note stays behind
     test = tmp_path / "tests" / "annotators" / "test_my_method_v1.py"
     compile(test.read_text(), str(test), "exec")
@@ -57,8 +63,8 @@ def test_new_makes_a_working_copy_of_example_kickstart(tmp_path, capsys, monkeyp
     assert cls.__name__ == "MyMethodV1" and cls.name == "my_method_v1"
     assert check_annotator(cls) == []
     out = cls().annotate(sharednet.load(GOAL_RUN))
-    assert validate_output(cls, out) == [] and [(f["seq"], f["mode"]) for f in out["findings"]] == [(6, "open_question"), (10, "bare_claim")]
-    assert out["taxonomy"] == "my_method_v1@1" and set(cls().modes_in(out)) <= {m["id"] for m in taxonomy_of(cls)["modes"]}
+    assert validate_output(cls, out) == [] and [(f["seq"], f["signal"]) for f in out["findings"]] == [(6, "open_question"), (10, "bare_claim")]
+    assert out["taxonomy"] == "state_gap@1" and set(cls().modes_in(out)) <= {m["id"] for m in taxonomy_of(cls)["modes"]}
     assert json.loads((folder / "schema.json").read_text())["$id"] == "commsfail/my_method_v1/v1"
 
 def test_the_kickstart_test_is_the_template_new_copies():

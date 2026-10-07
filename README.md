@@ -102,21 +102,26 @@ The envelope is the same for every annotator. The `output` is the annotator's ow
 
 | annotator | output schema | taxonomy | what it reports |
 |---|---|---|---|
-| [`regex_v1`](commsfail/annotators/regex_v1) | `comms-failure/analysis.v1` | the ten modes below | the ten failure modes, from text patterns; works on any source |
-| [`facts_v1`](commsfail/annotators/facts_v1) | `commsfail/facts_v1/v1` | seven facts, mapped onto R1, D1, D2 | said versus did: each post checked against its author's own log; needs a goal-run record |
-| [`example_kickstart`](commsfail/annotators/example_kickstart) | `commsfail/example_kickstart/v1` | two sample modes, mapped onto B1, D1 | open questions and bare claims; **the annotator to copy** with `commsfail new` |
-| yours | yours | yours | see [CONTRIBUTING.md](CONTRIBUTING.md) |
+| [`regex_v1`](commsfail/annotators/regex_v1) | `comms-failure/analysis.v1` | `ten_modes` | the ten failure modes, from text patterns; works on any source |
+| [`facts_v1`](commsfail/annotators/facts_v1) | `commsfail/facts_v1/v1` | `ten_modes` | said versus did: each post checked against its author's own log; needs a goal-run record |
+| [`example_kickstart`](commsfail/annotators/example_kickstart) | `commsfail/example_kickstart/v1` | `state_gap` | open questions and bare claims; **the annotator to copy** with `commsfail new` |
+| yours | yours | a choice | see [CONTRIBUTING.md](CONTRIBUTING.md) |
 
 ### Taxonomies
 
-There is no single taxonomy here. People cut communication failures in different ways: by what happened to a message, by which two states disagree, by where in a piece of work it broke. Each annotator states its own cut in a `taxonomy.json` in its folder. The file holds:
-- the groups;
-- the modes, each with a definition a person can label with;
-- for each mode, in `maps_to`, the modes of other annotators that it corresponds to.
+People cut communication failures in different ways, so there is more than one taxonomy. There is still only one place where failures are defined. [taxonomy-choices](commsfail/annotators/taxonomy-choices) holds two things:
+- **`patterns.json`**, a catalog in which every failure pattern is defined once, with a definition a person can label with and an example;
+- **the choices**, the ways to group those patterns into classes.
 
-`maps_to` is what keeps different taxonomies comparable. The contract tests check that every target exists, and that an annotator only reports modes of its own taxonomy. Any taxonomy is also a codebook for human labels: `commsfail audit export ... --codebook <annotator>`.
+| Choice | Classes | Complete |
+|---|---|---|
+| `ten_modes` | the paper's three groups: not read, not binding, never done | no: ten patterns, the reference |
+| `state_gap` | by which two states of the run disagree: unsaid, unreceived, misread, disagreement, ungrounded, stalled | yes |
+| `decision_point` | by which decision an agent got wrong: disclose, claim, specify, hand off, report and verify, progress and close | yes |
 
-The reference taxonomy is `regex_v1`'s ten modes, from the comms-failure paper. Most taxonomies here map onto it.
+An annotator names its choice in one line, `taxonomy = "state_gap"`, and reports pattern ids. Every choice groups the same patterns, so findings and human labels read under any choice. A complete choice must place every pattern of the catalog, in a class or explicitly out of scope, and the tests check this. When a new pattern is added, every complete taxonomy has to say where it goes.
+
+The ten patterns of `ten_modes`, which regex_v1 reports:
 
 | id | mode | what happened to the message |
 |---|---|---|
@@ -147,8 +152,9 @@ commsfail audit finalize a.jsonl b.jsonl --adjudicated todo.jsonl --key key.json
 A codebook can be:
 - `modes_v1`: regex_v1's ten modes, as yes-or-no labels per post.
 - `discourse_v1`: accept, result and review_pass.
-- any annotator's name: its taxonomy becomes the labels, so people label exactly what that annotator reports.
-- a JSON file: a codebook, or a taxonomy. The procedure and the rules for annotators are in [commsfail/audit](commsfail/audit).
+- a taxonomy choice, such as `state_gap`, labelled by pattern, or `state_gap:groups`, labelled by class;
+- an annotator's name, which gives the taxonomy it reports in;
+- a JSON file holding a codebook. The procedure and the rules for annotators are in [commsfail/audit](commsfail/audit).
 
 ## Contributing
 
@@ -167,10 +173,11 @@ commsfail/
     sharednet.py           everything about SharedNet: the readers and the tools
   annotators/
     base.py                the contract: schema loading, validation, the record envelope
-    taxonomy.py            taxonomy files: load, check, maps_to; helpers for analysis.v1 output
-    regex_v1/              one annotator: __init__.py, schema.json, taxonomy.json (the ten modes), README.md
+    taxonomy.py            load and check the catalog and the choices; regroup counts; analysis.v1 helpers
+    taxonomy-choices/      patterns.json (every pattern, once) and the choices: ten_modes, state_gap, decision_point
+    regex_v1/              one annotator: __init__.py, schema.json, README.md
     facts_v1/              said versus did, from each seat's own log
-    example_kickstart/     a working sample with a two-mode taxonomy: what `commsfail new` copies
+    example_kickstart/     a working sample, read in state_gap: what `commsfail new` copies
   audit/                   human labels: blind export, kappa, adjudication, gold; the built-in codebooks
   cli.py
 tests/
@@ -178,7 +185,7 @@ tests/
   fixtures/share.json      a synthetic share
   test_contract.py         the rules, on every annotator and every sample
   test_audit.py            the audit steps, the export on every sample
-  test_taxonomy.py         what a taxonomy file must hold
+  test_taxonomy.py         the catalog, the choices, and the completeness check
   annotators/              one behaviour test file per annotator
 examples/plugin/           an annotator and a source in a separate package
 ```

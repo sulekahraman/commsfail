@@ -8,8 +8,8 @@ An annotator is a class:
         schema = "schema.json"    # its output schema (JSON Schema 2020-12), relative to the class's file
         def annotate(self, trace) -> dict: ...    # deterministic, offline, leaves the trace unchanged
         def markdown(self, output) -> str: ...    # optional: a short view for people (`--markdown`)
-        taxonomy = "taxonomy.json"  # optional: the failure modes it reports, as data (see taxonomy.py)
-        def modes_in(self, output) -> list[str]: ...  # required with a taxonomy: the mode ids an output reports
+        taxonomy = "state_gap"      # optional: a choice in taxonomy-choices/ (see taxonomy.py)
+        def modes_in(self, output) -> list[str]: ...  # required with a taxonomy: the pattern ids an output reports
 
 Each annotator owns its output schema. commsfail puts every output in one envelope, the record:
 
@@ -79,12 +79,12 @@ def check_annotator(annotator) -> list[str]:
         errs.append(f"the schema is not a valid JSON Schema: {e.message}")
     try:
         tax = taxonomy_of(cls)
-    except json.JSONDecodeError as e:
-        return errs + [f"the taxonomy file is not valid JSON: {e}"]
+    except KeyError as e:
+        return errs + [f"taxonomy: {e.args[0]}"]
     if tax is not None:
         errs += [f"taxonomy: {e}" for e in check_taxonomy(tax)]
         if not callable(getattr(cls, "modes_in", None)):
-            errs.append("an annotator with a taxonomy must implement modes_in(output): the mode ids an output reports")
+            errs.append("an annotator with a taxonomy must implement modes_in(output): the pattern ids an output reports")
     return errs
 
 def _short(s: str, n: int = 240) -> str:
