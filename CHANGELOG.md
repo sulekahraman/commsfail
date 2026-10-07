@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+## 0.4.0
+
+Each annotator owns its taxonomy. Communication failures can be cut in more than one way, so there is no
+global taxonomy any more.
+
+- `taxonomy.json` in an annotator's folder: groups, modes with definitions, and `maps_to`, which names the
+  modes of other annotators a mode corresponds to. `commsfail.annotators.taxonomy` loads and checks these files.
+  `commsfail taxonomy <annotator>` prints one. `commsfail annotators` shows each annotator's taxonomy.
+- The contract: every `maps_to` names a real mode, and an annotator with a taxonomy implements
+  `modes_in(output)` and reports only modes of its own taxonomy.
+- `regex_v1`: the ten modes move to `regex_v1/taxonomy.json`, with their groups, the layer that removes each,
+  and their MAST counterparts. Output unchanged.
+- `facts_v1`: its seven facts become its taxonomy, each mapped onto regex_v1's R1, D1 or D2. Output unchanged.
+- `example_kickstart`: a working annotator with a two-mode sample taxonomy, the one to copy. `commsfail new`
+  copies it and its test; the copy passes at once. It replaces `_template/`.
+- `commsfail audit`: any annotator's taxonomy, or a taxonomy file, is a codebook. `modes_v1` is now built from
+  regex_v1's taxonomy, with the same labels and definitions, so `modes_v1@1` rows still compare.
+- Breaking: `commsfail.annotators.taxonomy.MODES` is gone; read `taxonomy_of(<annotator>)` instead.
+  `base_analysis()` lists the modes of the annotator's own taxonomy.
+
 ## 0.3.0
 
 - `commsfail audit`: human labels you can trust. `export` writes a blind file, one row per agent post, with no

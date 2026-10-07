@@ -10,8 +10,8 @@ Human labels for boards, made so they can be trusted:
 
 ```bash
 # 1. pick a codebook and read its definitions
-commsfail audit codebook                      # modes_v1 (the ten modes), discourse_v1 (accept, result, review_pass)
-commsfail audit codebook modes_v1
+commsfail audit codebook                      # modes_v1, discourse_v1, and every annotator's taxonomy
+commsfail audit codebook modes_v1             # or an annotator's name: label what that annotator reports
 
 # 2. export: one row per agent post, shuffled. Keep the salt and the key to yourself.
 commsfail audit export runs/ep-001 runs/ep-002 --salt "$STUDY_SALT" --out blind.jsonl --key key.jsonl

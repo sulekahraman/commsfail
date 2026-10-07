@@ -1,0 +1,17 @@
+{
+  "id": "example_kickstart",
+  "version": "1",
+  "description": "A sample taxonomy to start from: two modes in two groups. Replace it with yours, and say in maps_to which regex_v1 mode each of yours corresponds to.",
+  "groups": [
+    {"id": "unanswered", "name": "Unanswered", "definition": "Something a post asks for never comes back."},
+    {"id": "unbacked", "name": "Unbacked", "definition": "A post states something that a reader cannot check from the board."}
+  ],
+  "modes": [
+    {"id": "open_question", "name": "Open question", "group": "unanswered",
+     "definition": "The post asks a question that no later post answers or cites.",
+     "maps_to": ["regex_v1:B1"]},
+    {"id": "bare_claim", "name": "Bare claim", "group": "unbacked",
+     "definition": "The post says something is done or passes, and names no file, item or post a reader could check.",
+     "maps_to": ["regex_v1:D1"]}
+  ]
+}

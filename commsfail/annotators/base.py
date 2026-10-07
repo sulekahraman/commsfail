@@ -8,6 +8,8 @@ An annotator is a class:
         schema = "schema.json"    # its output schema (JSON Schema 2020-12), relative to the class's file
         def annotate(self, trace) -> dict: ...    # deterministic, offline, leaves the trace unchanged
         def markdown(self, output) -> str: ...    # optional: a short view for people (`--markdown`)
+        taxonomy = "taxonomy.json"  # optional: the failure modes it reports, as data (see taxonomy.py)
+        def modes_in(self, output) -> list[str]: ...  # required with a taxonomy: the mode ids an output reports
 
 Each annotator owns its output schema. commsfail puts every output in one envelope, the record:
 
@@ -24,6 +26,7 @@ from typing import Protocol, runtime_checkable
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
 from ..trace import Trace
+from .taxonomy import check_taxonomy, taxonomy_of
 
 RECORD = "commsfail/record.v1"
 NAME_RE = re.compile(r"^[a-z][a-z0-9_]{1,40}$")
@@ -74,6 +77,14 @@ def check_annotator(annotator) -> list[str]:
         Draft202012Validator.check_schema(schema)
     except SchemaError as e:
         errs.append(f"the schema is not a valid JSON Schema: {e.message}")
+    try:
+        tax = taxonomy_of(cls)
+    except json.JSONDecodeError as e:
+        return errs + [f"the taxonomy file is not valid JSON: {e}"]
+    if tax is not None:
+        errs += [f"taxonomy: {e}" for e in check_taxonomy(tax)]
+        if not callable(getattr(cls, "modes_in", None)):
+            errs.append("an annotator with a taxonomy must implement modes_in(output): the mode ids an output reports")
     return errs
 
 def _short(s: str, n: int = 240) -> str:

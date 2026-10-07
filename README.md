@@ -24,6 +24,7 @@ commsfail analyse runs/rom_abc --annotator my_v1   # another annotator
 commsfail validate record.json                     # the output against its annotator's schema
 commsfail annotators                               # every annotator, built in and plugins, with its schema id
 commsfail schema regex_v1                          # an annotator's output schema
+commsfail taxonomy regex_v1                        # an annotator's failure modes
 ```
 
 ```python
@@ -99,13 +100,23 @@ The envelope is the same for every annotator. The `output` is the annotator's ow
 
 ## Annotators
 
-| annotator | output schema | what it reports |
-|---|---|---|
-| [`regex_v1`](commsfail/annotators/regex_v1) | `comms-failure/analysis.v1` | the ten failure modes below, from text patterns; works on any source |
-| [`facts_v1`](commsfail/annotators/facts_v1) | `commsfail/facts_v1/v1` | said versus did: each post checked against its author's own log; needs a goal-run record |
-| yours | yours | see the next section |
+| annotator | output schema | taxonomy | what it reports |
+|---|---|---|---|
+| [`regex_v1`](commsfail/annotators/regex_v1) | `comms-failure/analysis.v1` | the ten modes below | the ten failure modes, from text patterns; works on any source |
+| [`facts_v1`](commsfail/annotators/facts_v1) | `commsfail/facts_v1/v1` | seven facts, mapped onto R1, D1, D2 | said versus did: each post checked against its author's own log; needs a goal-run record |
+| [`example_kickstart`](commsfail/annotators/example_kickstart) | `commsfail/example_kickstart/v1` | two sample modes, mapped onto B1, D1 | open questions and bare claims; **the annotator to copy** with `commsfail new` |
+| yours | yours | yours | see [CONTRIBUTING.md](CONTRIBUTING.md) |
 
-The ten modes of `regex_v1` come from our taxonomy of communication failures. A new annotator may use them (`commsfail.annotators.taxonomy` has the helpers), refine them, or report something else entirely.
+### Taxonomies
+
+There is no single taxonomy here. People cut communication failures in different ways: by what happened to a message, by which two states disagree, by where in a piece of work it broke. Each annotator states its own cut in a `taxonomy.json` in its folder. The file holds:
+- the groups;
+- the modes, each with a definition a person can label with;
+- for each mode, in `maps_to`, the modes of other annotators that it corresponds to.
+
+`maps_to` is what keeps different taxonomies comparable. The contract tests check that every target exists, and that an annotator only reports modes of its own taxonomy. Any taxonomy is also a codebook for human labels: `commsfail audit export ... --codebook <annotator>`.
+
+The reference taxonomy is `regex_v1`'s ten modes, from the comms-failure paper. Most taxonomies here map onto it.
 
 | id | mode | what happened to the message |
 |---|---|---|
@@ -133,17 +144,17 @@ commsfail audit compare a.jsonl b.jsonl --report report.json --adjudicate todo.j
 commsfail audit finalize a.jsonl b.jsonl --adjudicated todo.jsonl --key key.jsonl --out gold.jsonl
 ```
 
-There are two built-in codebooks:
-- `modes_v1`: the ten modes above, as yes-or-no labels per post.
+A codebook can be:
+- `modes_v1`: regex_v1's ten modes, as yes-or-no labels per post.
 - `discourse_v1`: accept, result and review_pass.
-
-Any other codebook can be a JSON file. The procedure and the rules for annotators are in [commsfail/audit](commsfail/audit).
+- any annotator's name: its taxonomy becomes the labels, so people label exactly what that annotator reports.
+- a JSON file: a codebook, or a taxonomy. The procedure and the rules for annotators are in [commsfail/audit](commsfail/audit).
 
 ## Contributing
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before you open a pull request. It covers:
 - the discipline every change follows: a pull request, tests in the same pull request, extending the existing tests, versions and the changelog;
-- the nine rules every annotator obeys;
+- the ten rules every annotator obeys;
 - the steps to add an annotator, a sample or a codebook;
 - the data rules.
 
@@ -156,10 +167,10 @@ commsfail/
     sharednet.py           everything about SharedNet: the readers and the tools
   annotators/
     base.py                the contract: schema loading, validation, the record envelope
-    taxonomy.py            the ten modes and helpers, for annotators that use them
-    regex_v1/              one annotator: __init__.py, schema.json, README.md
+    taxonomy.py            taxonomy files: load, check, maps_to; helpers for analysis.v1 output
+    regex_v1/              one annotator: __init__.py, schema.json, taxonomy.json (the ten modes), README.md
     facts_v1/              said versus did, from each seat's own log
-    _template/             what `commsfail new` copies
+    example_kickstart/     a working sample with a two-mode taxonomy: what `commsfail new` copies
   audit/                   human labels: blind export, kappa, adjudication, gold; the built-in codebooks
   cli.py
 tests/
@@ -167,6 +178,7 @@ tests/
   fixtures/share.json      a synthetic share
   test_contract.py         the rules, on every annotator and every sample
   test_audit.py            the audit steps, the export on every sample
+  test_taxonomy.py         what a taxonomy file must hold
   annotators/              one behaviour test file per annotator
 examples/plugin/           an annotator and a source in a separate package
 ```

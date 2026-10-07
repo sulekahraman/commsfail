@@ -49,6 +49,10 @@ class RegexV1:
     name = "regex_v1"
     version = "0.2.0"
     schema = "schema.json"
+    taxonomy = "taxonomy.json"
+
+    def modes_in(self, output: dict) -> list[str]:
+        return [m["id"] for m in output["modes"] if m["present"]]
 
     def annotate(self, trace: Trace) -> dict:
         a = base_analysis(trace, self)

@@ -3,11 +3,14 @@
 An annotator passes when it is well formed (name, version, a valid schema with $id, title and description),
 its output conforms to its own schema on every sample, it gives the same output twice and leaves the trace
 unchanged, it runs with the network cut, every "seq" it reports is a real post, and no token reaches its output.
+An annotator with a taxonomy also passes when every maps_to names a real mode of another annotator, and every
+mode its output reports is in its own taxonomy.
 """
 import copy, json
 from pathlib import Path
 import pytest
-from commsfail.annotators import check_annotator, origin, registry, run, validate_output, validate_record
+from commsfail.annotators import (check_annotator, check_taxonomy, origin, registry, run, taxonomy_of, validate_output,
+                                  validate_record)
 from commsfail.sources.sharednet import TOKEN_RE
 
 NAMES = sorted(registry())
@@ -62,3 +65,15 @@ def test_record_round_trip(name, any_trace, no_network):
     rec = json.loads(json.dumps(run(registry()[name](), any_trace)))
     assert rec["annotator"]["name"] == name
     assert validate_record(rec) == []
+
+WITH_TAXONOMY = sorted(n for n in NAMES if taxonomy_of(registry()[n]))
+
+@pytest.mark.parametrize("name", WITH_TAXONOMY)
+def test_taxonomy_maps_onto_real_modes(name):
+    assert check_taxonomy(taxonomy_of(registry()[name]), registry()) == []
+
+@pytest.mark.parametrize("name", WITH_TAXONOMY)
+def test_output_reports_only_modes_of_its_taxonomy(name, any_trace, no_network):
+    ann = registry()[name]()
+    ids = {m["id"] for m in taxonomy_of(ann)["modes"]}
+    assert set(ann.modes_in(ann.annotate(any_trace))) <= ids

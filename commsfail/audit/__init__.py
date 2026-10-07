@@ -6,12 +6,12 @@ Three steps, each a function here and a ``commsfail audit`` command:
     compare   two filled copies of blind.jsonl -> an agreement report (kappa per label) + the rows to adjudicate
     finalize  both copies + the adjudicated rows + the key -> gold.jsonl, with provenance restored
 
-A codebook names the labels. Each label is one yes-or-no decision about one post. Built in:
+A codebook names the labels. Each label is one yes-or-no decision about one post. A codebook is one of:
 
-    modes_v1      the ten failure modes of commsfail.annotators.taxonomy: which modes a post is evidence of
+    modes_v1      regex_v1's taxonomy, the ten modes: which modes a post is evidence of
     discourse_v1  accept, result, review_pass: what a post does (Table 1 of the comms-failure paper, per post)
-
-Any other codebook is a JSON file of the same shape: {"id", "version", "labels": [{"id", "definition"}], "rules"}.
+    <annotator>   any annotator's taxonomy: its modes become the labels, so people label what the annotator reports
+    <file>.json   a codebook {"id", "version", "labels": [{"id", "definition"}], "rules"}, or a taxonomy file
 
 The blind file holds what a reader needs and nothing more: the post, its author's handle, the handles it
 addresses, and the posts before it. The source path, the Room's id and name, the seats' models, the checks,
@@ -23,7 +23,7 @@ from __future__ import annotations
 import hashlib, json, random, re
 from pathlib import Path
 from typing import Iterable
-from ..annotators.taxonomy import MODES
+from ..annotators.taxonomy import check_taxonomy, load_taxonomy, taxonomy_of
 from ..sources.sharednet import TOKEN_RE, agent_posts, mentions
 from ..trace import Trace
 
@@ -39,25 +39,17 @@ RULES = [
     "`uncertain` holds the labels you cannot decide from the visible record. They are left out of kappa and always adjudicated.",
     "Write the items you mean (file names, task ids) in `note`. Change nothing but `labels`, `uncertain` and `note`.",
 ]
-MODE_DEFINITIONS = {
-    "R1":  "The post claims or redoes an item that an earlier post already settled: delivered, or held by another seat.",
-    "R2":  "A seat that joined late claims or redoes work the log already holds.",
-    "B1":  "A hedged claim that is never made firm, or an ask addressed to a seat that nobody answers.",
-    "B2":  "Who speaks or who leads changes under one handle: the post speaks for another seat, or a second seat claims a role already held.",
-    "D1":  "The post claims an action (pushed, uploaded, paid, tests pass) that nothing on the board attests.",
-    "D2":  "The post passes a review of an item whose result was never delivered.",
-    "D3":  "The post ends the work (a pause, a sign-off, a last heartbeat) while items are still open.",
-    "D4":  "The post asks for an action only another seat can take, and the work is never routed to that seat.",
-    "REP": "The post repeats an earlier post and adds nothing new.",
-    "HB":  "A status post with no new information.",
-}
+REGEX_V1_TAXONOMY = Path(__file__).resolve().parents[1] / "annotators" / "regex_v1" / "taxonomy.json"
+
+def codebook_from_taxonomy(tax: dict, cid: str | None = None) -> dict:
+    """A codebook whose labels are a taxonomy's modes: people label what an annotator reports."""
+    return {"id": cid or tax["id"], "version": tax["version"], "description": tax["description"],
+            "labels": [{"id": m["id"], "name": m["name"], "definition": m["definition"]} for m in tax["modes"]],
+            "rules": RULES}
+
 CODEBOOKS = {
-    "modes_v1": {
-        "id": "modes_v1", "version": "1",
-        "description": "Which of the ten failure modes this post is evidence of. Label the post where the failure shows.",
-        "labels": [{"id": m, "name": name, "definition": MODE_DEFINITIONS[m]} for m, (name, _, _) in MODES.items()],
-        "rules": RULES,
-    },
+    "modes_v1": {**codebook_from_taxonomy(load_taxonomy(str(REGEX_V1_TAXONOMY)), "modes_v1"), "version": "1",
+                 "description": "Which of regex_v1's ten failure modes this post is evidence of. Label the post where the failure shows."},
     "discourse_v1": {
         "id": "discourse_v1", "version": "1",
         "description": "What the post does. Failure modes are then read by rule from these labels and the record.",
@@ -92,13 +84,24 @@ def digest(row: dict) -> str:
     return "sha256:" + _sha(_canon({f: row.get(f) for f in FIXED}))
 
 def load_codebook(name_or_path: str) -> dict:
-    """A built-in codebook by name, or a codebook JSON file."""
+    """A built-in codebook, an annotator's taxonomy, or a codebook or taxonomy JSON file."""
     if name_or_path in CODEBOOKS:
         return CODEBOOKS[name_or_path]
+    from ..annotators import registry
+    if name_or_path in registry():
+        tax = taxonomy_of(registry()[name_or_path])
+        if tax is None:
+            raise ValueError(f"annotator {name_or_path!r} has no taxonomy, so it cannot be a codebook")
+        return codebook_from_taxonomy(tax, name_or_path)
     p = Path(name_or_path)
     if not p.is_file():
-        raise ValueError(f"no codebook {name_or_path!r}: use one of {sorted(CODEBOOKS)} or a JSON file")
+        raise ValueError(f"no codebook {name_or_path!r}: use {sorted(CODEBOOKS)}, an annotator with a taxonomy, or a JSON file")
     book = json.loads(p.read_text(encoding="utf-8"))
+    if isinstance(book, dict) and "modes" in book:
+        problems = check_taxonomy(book)
+        if problems:
+            raise ValueError(f"{p}: not a valid taxonomy: {problems[0]}")
+        book = codebook_from_taxonomy(book)
     ids = [x.get("id") for x in book.get("labels") or [] if isinstance(x, dict)]
     if not (isinstance(book.get("id"), str) and book.get("version") and ids and all(isinstance(i, str) for i in ids)
             and len(set(ids)) == len(ids) == len(book["labels"])):

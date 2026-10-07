@@ -1,12 +1,15 @@
 """The annotator registry: every annotator folder in this package, plus installed plugins.
 
-A built-in annotator is a folder, commsfail/annotators/<name>/, with three files:
+A built-in annotator is a folder, commsfail/annotators/<name>/, with three files, and a fourth when it reports
+failure modes:
 
-    __init__.py   the code; it sets ANNOTATOR = <the class>
-    schema.json   the output schema
-    README.md     what it reports, how, and what it is good and bad at
+    __init__.py     the code; it sets ANNOTATOR = <the class>
+    schema.json     the output schema
+    README.md       what it reports, how, and what it is good and bad at
+    taxonomy.json   its own failure modes (see taxonomy.py); every annotator may cut failures its own way
 
-Adding the folder registers it. There is no list to edit.
+Adding the folder registers it. There is no list to edit. ``example_kickstart`` is the one to copy:
+``commsfail new <name>`` does that.
 
 A plugin annotator is a class in any installed package, announced through an entry point:
 
@@ -22,6 +25,7 @@ from .._plugins import load_group
 from ..trace import Trace
 from .base import (RECORD, Annotator, check_annotator, make_record, schema_of, schema_path, validate_output,
                    validate_record)
+from .taxonomy import check_taxonomy, taxonomy_of
 
 ENTRY_POINT_GROUP = "commsfail.annotators"
 
@@ -69,4 +73,5 @@ def __getattr__(name: str):
     raise AttributeError(f"module 'commsfail.annotators' has no attribute {name!r}")
 
 __all__ = ["ENTRY_POINT_GROUP", "RECORD", "Annotator", "builtin", "discover", "registry", "get_annotator", "origin", "run",
-           "check_annotator", "make_record", "schema_of", "schema_path", "validate_output", "validate_record", "REGISTRY"]
+           "check_annotator", "make_record", "schema_of", "schema_path", "validate_output", "validate_record",
+           "taxonomy_of", "check_taxonomy", "REGISTRY"]

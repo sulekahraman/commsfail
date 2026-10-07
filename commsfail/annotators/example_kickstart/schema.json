@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "commsfail/example_kickstart/v1",
+  "title": "example_kickstart output",
+  "description": "Replace with yours: what each field means and how it is computed. Change the $id when the format changes. Keep the mode names in step with taxonomy.json.",
+  "type": "object",
+  "required": ["taxonomy", "findings", "counts"],
+  "additionalProperties": false,
+  "properties": {
+    "taxonomy": {"type": "string", "description": "the taxonomy the modes come from, as id@version"},
+    "findings": {
+      "type": "array",
+      "description": "one row for each post the method points at, and the mode it shows",
+      "items": {
+        "type": "object",
+        "required": ["seq", "who", "mode", "excerpt", "why"],
+        "additionalProperties": false,
+        "properties": {
+          "seq": {"type": "integer", "minimum": 0, "description": "the post"},
+          "who": {"type": "string", "description": "the seat that wrote it"},
+          "mode": {"enum": ["open_question", "bare_claim"], "description": "a mode of taxonomy.json"},
+          "excerpt": {"type": "string", "description": "redacted"},
+          "why": {"type": "string", "description": "the sentence a reader would write in the margin"}
+        }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "required": ["posts", "open_question", "bare_claim"],
+      "additionalProperties": false,
+      "properties": {
+        "posts": {"type": "integer", "minimum": 0},
+        "open_question": {"type": "integer", "minimum": 0},
+        "bare_claim": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}
