@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+## 0.3.0
+
+- `commsfail audit`: human labels you can trust. `export` writes a blind file, one row per agent post, with no
+  path, Room id, model, check or grade, tokens scrubbed, a digest on every fixed field, and a private key.
+  `compare` gives Cohen's kappa per label and the rows to adjudicate. `finalize` writes gold labels with the
+  source restored. Two built-in codebooks: `modes_v1` (the ten modes, per post) and `discourse_v1` (accept,
+  result, review_pass); any other codebook is a JSON file. Ported from the comms-failure paper's
+  `labels/annotation_audit.py`, without the harness-specific rescoring.
+- CONTRIBUTING.md holds the whole guide and the repository's discipline: every change through a pull
+  request, tests in the same pull request, extend the existing tests before writing new ones, versions and
+  this changelog. The README keeps a pointer.
+
 ## 0.2.0
 
 The repository is now organised for many annotators from many people.

@@ -13,8 +13,9 @@ Layout:
 
 - ``commsfail.sources.sharednet``  everything about SharedNet: readers for each source, and tools over a Trace
 - ``commsfail.annotators``         the contract (``base``), the registry, one folder per annotator
+- ``commsfail.audit``              human labels: blind export, Cohen's kappa, adjudication, gold
 - ``commsfail.trace``              the Trace shape
-- ``commsfail.cli``                ``commsfail analyse | trace | annotators | sources | schema | validate | new``
+- ``commsfail.cli``                ``commsfail analyse | trace | annotators | sources | schema | validate | new | audit``
 """
 from __future__ import annotations
 from .trace import Trace
@@ -22,7 +23,7 @@ from .sources import load, get_source
 from .annotators import (Annotator, get_annotator, run, check_annotator, schema_of, validate_output, validate_record,
                          RECORD)
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __all__ = ["Trace", "load", "get_source", "Annotator", "get_annotator", "run", "check_annotator", "schema_of",
            "validate_output", "validate_record", "RECORD", "REGISTRY", "SOURCES", "__version__"]
 
