@@ -17,6 +17,19 @@ a rationale, and up to three target-post evidence spans.
 Model calls happen before `annotate()`. The preparation step gives each target
 only the roster, up to six cited earlier posts, the twelve preceding posts,
 deterministic hints, and the target itself. It never includes future posts.
+One request labels one target, but the target is therefore not classified
+without context. This per-target design makes retries, caching, and historical
+reply constraints simple. Its cost grows with the number of posts because the
+guide and overlapping context are repeated; a future runner may batch targets
+while preserving a separate bounded context for each one.
+
+Message classification is optional. A missing cache is a valid result with
+`status: "missing_cache"` rather than an error. This supports an ablation in
+which the same conversation-level scanner is evaluated first on the raw trace
+and then with message annotations, holding its model, prompt, token budget, and
+evaluation set fixed. The comparison should report accuracy, citation quality,
+latency, and token cost before annotations become a required preprocessing
+step.
 
 Export one JSONL request per agent post:
 
