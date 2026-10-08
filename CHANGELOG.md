@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `message_annotations_v1`: bounded per-message discourse prompts and an
+  offline, versioned cache annotator for fifteen communicative-function labels.
+
 ## 0.4.0
 
 Taxonomies become choices. There is one catalog of failure patterns, each defined once, and several ways to

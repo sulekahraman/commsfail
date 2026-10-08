@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "commsfail/message_annotations_v1/v1",
+  "title": "message_annotations_v1 output",
+  "description": "Normalized cached model labels for the observable communicative function of each agent post.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "guide_version",
+    "cache_format",
+    "trace_fingerprint",
+    "status",
+    "messages",
+    "coverage",
+    "caveats"
+  ],
+  "properties": {
+    "guide_version": {
+      "const": "1.0"
+    },
+    "cache_format": {
+      "const": "commsfail/message_annotations_v1/cache.v1"
+    },
+    "trace_fingerprint": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "status": {
+      "enum": [
+        "complete",
+        "partial",
+        "missing_cache",
+        "invalid_cache"
+      ]
+    },
+    "messages": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/message"
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "agent_posts",
+        "annotated",
+        "missing"
+      ],
+      "properties": {
+        "agent_posts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "annotated": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "missing": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "caveats": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "message_type": {
+      "enum": [
+        "question",
+        "delegation_request",
+        "acknowledgement",
+        "status_update",
+        "result_delivery",
+        "evidence_observation",
+        "proposal",
+        "critique_disagreement",
+        "agreement",
+        "decision",
+        "synthesis",
+        "clarification",
+        "artifact_sharing",
+        "coordination",
+        "social_heartbeat"
+      ]
+    },
+    "message": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "seq",
+        "who",
+        "primary_type",
+        "secondary_types",
+        "replies_to",
+        "addressed_to",
+        "confidence",
+        "ambiguous",
+        "rationale",
+        "evidence"
+      ],
+      "properties": {
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "who": {
+          "type": "string"
+        },
+        "primary_type": {
+          "$ref": "#/$defs/message_type"
+        },
+        "secondary_types": {
+          "type": "array",
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/message_type"
+          }
+        },
+        "replies_to": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "addressed_to": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "ambiguous": {
+          "type": "boolean"
+        },
+        "rationale": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "field",
+              "text"
+            ],
+            "properties": {
+              "field": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
